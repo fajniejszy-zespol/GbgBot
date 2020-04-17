@@ -53,7 +53,7 @@ team2 = ffai.load_all_teams(ruleset, pitch_size)[0]
 #config.competition_mode = False
 #config.debug_mode = False
 	
-if __name__ == "__main__":
+
 
     # Create environment
     #env = gym.make("FFAI-v2")
@@ -64,30 +64,27 @@ if __name__ == "__main__":
 	
 
 
-	env =  ffai.FFAIEnv(config, team1, team2)
+env =  ffai.FFAIEnv(config, team1, team2)
 
-	seed = 0
-	env.seed(seed)
-	rnd = np.random.RandomState(seed)
+seed = 0
+env.seed(seed)
+rnd = np.random.RandomState(seed)
 
-    
-	o = env.reset()
-	env.render()
-	print("finished creating game")
+
+obs = env.reset()
+for i in range(10): 	
+	action = get_random_action(env, rnd)
+	obs = env.step( action )
+
+r = {"damage": 12, "yolo": 13, "swag": 37}
+
+env.render(reward_array=r)
 	
+if __name__ == "__main__":
 	while True: 
-		
-		
-		
-		
 		action = get_random_action(env, rnd)
-		
 		print(action)
-		
-		env.step( action )
-		
-		
-		env.render()
+		env.render(reward_array=r)
 		input()
 	
 		
