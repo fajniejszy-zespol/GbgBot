@@ -3,6 +3,7 @@
 #import gym
 import numpy as np
 import ffai
+import pdb
 
 def get_random_action(env, rnd): 
 	action_types = env.available_action_types()
@@ -27,7 +28,31 @@ def get_random_action(env, rnd):
 	}
 	return action
 	
+def print_vars(o):
+	dict_o = vars(o)
+	for k in dict_o: 
+		print(k, " - ", dict_o[k])
+	
+	
+	
+pitch_size = 3 
 
+# Load configurations, rules, arena and teams
+#config = ffai.load_config("bot-bowl-ii")
+
+config = ffai.load_config("ff-"+str(pitch_size))
+config.competition_mode = False
+ruleset = ffai.load_rule_set(config.ruleset)
+arena = ffai.load_arena(config.arena)
+
+team1 = ffai.load_all_teams(ruleset, pitch_size)[0] 
+team2 = ffai.load_all_teams(ruleset, pitch_size)[0] 
+
+#home = ffai.load_team_by_filename("human-3", ruleset)
+#away = ffai.load_team_by_filename("human-3", ruleset)
+#config.competition_mode = False
+#config.debug_mode = False
+	
 if __name__ == "__main__":
 
     # Create environment
@@ -36,23 +61,10 @@ if __name__ == "__main__":
     # Smaller variants
     # env = gym.make("FFAI-7-v2")
     # env = gym.make("FFAI-5-v2")
+	
 
 
-	print("start creating game") 
-	# Load configurations, rules, arena and teams
-	config = ffai.load_config("bot-bowl-ii")
-	config.competition_mode = False
-	ruleset = ffai.load_rule_set(config.ruleset)
-	arena = ffai.load_arena(config.arena)
-	home = ffai.load_team_by_filename("human", ruleset)
-	away = ffai.load_team_by_filename("human", ruleset)
-	config.competition_mode = False
-	config.debug_mode = False
-
-
-
-
-	env =  ffai.FFAIEnv(config, home, away)
+	env =  ffai.FFAIEnv(config, team1, team2)
 
 	seed = 0
 	env.seed(seed)
