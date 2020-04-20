@@ -4,6 +4,7 @@
 import numpy as np
 import ffai
 import pdb
+from RewardShapping import CalcReward 
 
 def get_random_action(env, rnd): 
 	action_types = env.available_action_types()
@@ -35,7 +36,7 @@ def print_vars(o):
 	
 	
 	
-pitch_size = 3 
+pitch_size = 5
 
 # Load configurations, rules, arena and teams
 #config = ffai.load_config("bot-bowl-ii")
@@ -66,26 +67,28 @@ team2 = ffai.load_all_teams(ruleset, pitch_size)[0]
 
 env =  ffai.FFAIEnv(config, team1, team2)
 
-seed = 0
+seed = 13125
 env.seed(seed)
 rnd = np.random.RandomState(seed)
 
 
 obs = env.reset()
-for i in range(10): 	
+for i in range(5): 	
 	action = get_random_action(env, rnd)
 	obs = env.step( action )
 
-r = {"damage": 12, "yolo": 13, "swag": 37}
-
-env.render(reward_array=r)
 	
 if __name__ == "__main__":
 	while True: 
 		action = get_random_action(env, rnd)
 		print(action)
-		env.render(reward_array=r)
-		input()
+		obs = env.step( action )
+		
+		
+		r = CalcReward(None, env.game, team1 )
+		if "fetch ball" in r: 
+			env.render(reward_array=r)
+			input()
 	
 		
 	
