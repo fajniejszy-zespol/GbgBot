@@ -3,30 +3,44 @@
 #import gym
 import numpy as np
 import ffai
-import pdb
-from RewardShapping import CalcReward 
+from pdb import set_trace
+from RewardShapping import RewardCalculation 
+from scripted_bot_example import MyScriptedBot
 
-def get_random_action(env, rnd): 
+def get_random_action(env): 
+	debug = False 
+
 	action_types = env.available_action_types()
+	game_actions = env.game.get_available_actions() 
+
+	if debug:
+		print("Env actions", action_types)
+		s = "" 
+		for a in game_actions: 
+			s = s + str(a.action_type) + " "
+		print("Game actions", s)
 	
-	
-	while True:
-		action_type = rnd.choice(action_types)
-		# Ignore PLACE_PLAYER actions
-		if action_type != ffai.ActionType.PLACE_PLAYER:
-			break
+	if ffai.ActionType.SETUP_FORMATION_SPREAD in [a.action_type for a in game_actions]: 
+		action_type = ffai.ActionType.SETUP_FORMATION_SPREAD
+	else
+		while True:
+			action_type = np.random.choice(action_types)
+			# Ignore PLACE_PLAYER actions
+			if action_type != ffai.ActionType.PLACE_PLAYER:
+				break
 	
 	
 	# Sample random position - if any
 	available_positions = env.available_positions(action_type)
-	pos = rnd.choice(available_positions) if len(available_positions) > 0 else None
+	position = np.random.choice(available_positions) if len(available_positions) > 0 else None
 
-	# Create action object
+	# Create action dict	
 	action = {
 		'action-type': action_type,
-		'x': pos.x if pos is not None else None,
-		'y': pos.y if pos is not None else None
+		'x': position.x if position is not None else None,
+		'y': position.y if position is not None else None
 	}
+	#action = ffai.Action(action_type=action_type, position=position, player=None)
 	return action
 	
 def print_vars(o):
@@ -42,6 +56,7 @@ pitch_size = 5
 #config = ffai.load_config("bot-bowl-ii")
 
 config = ffai.load_config("ff-"+str(pitch_size))
+config.fast_mode = False 
 config.competition_mode = False
 ruleset = ffai.load_rule_set(config.ruleset)
 arena = ffai.load_arena(config.arena)
@@ -49,51 +64,36 @@ arena = ffai.load_arena(config.arena)
 team1 = ffai.load_all_teams(ruleset, pitch_size)[0] 
 team2 = ffai.load_all_teams(ruleset, pitch_size)[0] 
 
-#home = ffai.load_team_by_filename("human-3", ruleset)
-#away = ffai.load_team_by_filename("human-3", ruleset)
-#config.competition_mode = False
-#config.debug_mode = False
+
+opponent_bot = MyScriptedBot('scripted')
 	
-
-
-    # Create environment
-    #env = gym.make("FFAI-v2")
-
-    # Smaller variants
-    # env = gym.make("FFAI-7-v2")
-    # env = gym.make("FFAI-5-v2")
-	
-
-
+#env =  ffai.FFAIEnv(config, team1, team2, opp_actor=opponent_bot)
 env =  ffai.FFAIEnv(config, team1, team2)
 
-seed = 13125
+seed = 1315
 env.seed(seed)
-rnd = np.random.RandomState(seed)
-
-
 obs = env.reset()
-for i in range(5): 	
-	action = get_random_action(env, rnd)
-	obs = env.step( action )
 
+reward = RewardCalculation(env.game, team1)
 	
 if __name__ == "__main__":
 	while True: 
-		action = get_random_action(env, rnd)
-		print(action)
+		action = get_random_action(env)
+		print("action choice: ", str(action))
+		
+		turns = (env.game.state.home_team.state.turn, env.game.state.away_team.state.turn) 
 		obs = env.step( action )
 		
 		
-		r = CalcReward(None, env.game, team1 )
-		if "fetch ball" in r: 
-			env.render(reward_array=r)
-			input()
-	
+		turns2 = (env.game.state.home_team.state.turn, env.game.state.away_team.state.turn) 
 		
+		if turns != turns2:
+			print("turn update")
+			print(turns2)
+		
+		
+		r = reward.get_reward(None)
+		#if "fetch ball" in r: 
+		env.render(reward_array=r)
+		input()
 	
-	
-	
-	
-	
-
