@@ -7,6 +7,12 @@ from pdb import set_trace
 from RewardShapping import RewardCalculation 
 from scripted_bot_example import MyScriptedBot
 
+setup_actions =set([ffai.ActionType.SETUP_FORMATION_WEDGE,
+					ffai.ActionType.SETUP_FORMATION_LINE,
+					ffai.ActionType.SETUP_FORMATION_SPREAD,
+					ffai.ActionType.SETUP_FORMATION_ZONE]) 
+
+
 def get_random_action(env): 
 	debug = False 
 
@@ -20,15 +26,16 @@ def get_random_action(env):
 			s = s + str(a.action_type) + " "
 		print("Game actions", s)
 	
-	if ffai.ActionType.SETUP_FORMATION_SPREAD in [a.action_type for a in game_actions]: 
-		action_type = ffai.ActionType.SETUP_FORMATION_SPREAD
-	else
+	
+	available_setup_actions = setup_actions.intersection(set([a.action_type for a in game_actions])) 
+	if len(available_setup_actions)>0: 
+		action_type = list(available_setup_actions)[0]
+	else:
 		while True:
 			action_type = np.random.choice(action_types)
 			# Ignore PLACE_PLAYER actions
 			if action_type != ffai.ActionType.PLACE_PLAYER:
 				break
-	
 	
 	# Sample random position - if any
 	available_positions = env.available_positions(action_type)
@@ -48,7 +55,10 @@ def print_vars(o):
 	for k in dict_o: 
 		print(k, " - ", dict_o[k])
 	
-	
+def print_dict(d): 
+	for k in d: 
+		print(k, " - ", d[k])
+	 
 	
 pitch_size = 5
 
@@ -81,19 +91,10 @@ if __name__ == "__main__":
 		action = get_random_action(env)
 		print("action choice: ", str(action))
 		
-		turns = (env.game.state.home_team.state.turn, env.game.state.away_team.state.turn) 
 		obs = env.step( action )
 		
-		
-		turns2 = (env.game.state.home_team.state.turn, env.game.state.away_team.state.turn) 
-		
-		if turns != turns2:
-			print("turn update")
-			print(turns2)
-		
-		
-		r = reward.get_reward(None)
-		#if "fetch ball" in r: 
+		r = reward.get_reward(obs)
 		env.render(reward_array=r)
+		
 		input()
 	
