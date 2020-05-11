@@ -7,11 +7,14 @@ from pdb import set_trace
 from RewardShapping import RewardCalculation 
 from scripted_bot_example import MyScriptedBot
 
+from time import sleep 
+
 setup_actions =set([ffai.ActionType.SETUP_FORMATION_WEDGE,
 					ffai.ActionType.SETUP_FORMATION_LINE,
 					ffai.ActionType.SETUP_FORMATION_SPREAD,
 					ffai.ActionType.SETUP_FORMATION_ZONE]) 
 
+render_next_move = False 
 
 def get_random_action(env): 
 	debug = False 
@@ -59,7 +62,9 @@ def print_dict(d):
 	for k in d: 
 		print(k, " - ", d[k])
 	 
+
 	
+	 
 pitch_size = 5
 
 # Load configurations, rules, arena and teams
@@ -87,6 +92,12 @@ obs = env.reset()
 reward = RewardCalculation(env.game, team1)
 	
 if __name__ == "__main__":
+	obs = env.step( get_random_action(env) )
+	obs = env.step( get_random_action(env) )
+	obs = env.step( get_random_action(env) )
+	env.render(reward_array=None)
+	
+	
 	while True: 
 		action = get_random_action(env)
 		print("action choice: ", str(action))
@@ -96,5 +107,5 @@ if __name__ == "__main__":
 		r = reward.get_reward(obs)
 		env.render(reward_array=r)
 		
-		input()
-	
+		input() 
+			
