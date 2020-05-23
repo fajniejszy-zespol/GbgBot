@@ -65,7 +65,7 @@ def print_dict(d):
 
 	
 	 
-pitch_size = 5
+pitch_size = 3
 
 # Load configurations, rules, arena and teams
 #config = ffai.load_config("bot-bowl-ii")
@@ -88,6 +88,10 @@ env =  ffai.FFAIEnv(config, team1, team2)
 seed = 1315
 env.seed(seed)
 obs = env.reset()
+
+obs = env.step( get_random_action(env) )
+obs = env.step( get_random_action(env) )
+obs = env.step( get_random_action(env) )
 
 reward = RewardCalculation(env.game, team1)
 	
