@@ -1,3 +1,7 @@
 *.pyc
 __pycache__/FirstGym.cpython-36.pyc
-a2c/models/FFAI-1-v2
+a2c/models/*
+a2c/plots/*
+a2c/logs/*
+
+

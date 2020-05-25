@@ -18,7 +18,7 @@ import pdb
 # Training configuration
 num_steps = 10000000
 num_processes = 4
-steps_per_update = 20
+steps_per_update = 40
 learning_rate = 0.001
 gamma = 0.99
 entropy_coef = 0.01
@@ -26,14 +26,14 @@ value_loss_coef = 0.5
 max_grad_norm = 0.05
 log_interval = 50
 save_interval = 500  
-ppcg = False
+ppcg = True
 
 # Environment
 #env_name = "FFAI-1-v2"
-#env_name = "FFAI-3-v2"
+env_name = "FFAI-3-v2"
 #num_steps = 10000000 # Increase training time
 #log_interval = 100
-env_name = "FFAI-5-v2"
+#env_name = "FFAI-5-v2"
 #num_steps = 100000000 # Increase training time
 #log_interval = 1000
 #save_interval = 5000
@@ -48,7 +48,7 @@ selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
 num_hidden_nodes = 128
-num_cnn_kernels = [32, 64]
+num_cnn_kernels = [32, 16]
 
 model_name = env_name
 log_filename = "logs/" + model_name + ".dat"
@@ -131,7 +131,7 @@ class CNNPolicy(nn.Module):
 
         # Spatial input stream
         self.conv1 = nn.Conv2d(spatial_shape[0], out_channels=kernels[0], kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0], out_channels=kernels[1], kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=kernels[0], out_channels=kernels[1], kernel_size=5, stride=1, padding=2)
 
         # Non-spatial input stream
         self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
@@ -394,6 +394,79 @@ def choose_place_ball_middle(game):
         right_center = Square( int(board_x_max*3/4), y)
         return Action(ActionType.PLACE_BALL, position=right_center)
 
+def is_block_dice(game): 
+    actions = [a.action_type for a in game.get_available_actions()]
+    block_dices = [ ActionType.SELECT_PUSH,
+                    ActionType.SELECT_ATTACKER_DOWN,
+                    ActionType.SELECT_BOTH_DOWN,
+                    ActionType.SELECT_DEFENDER_STUMBLES,
+                    ActionType.SELECT_DEFENDER_DOWN]
+    return any( [ (bd in actions) for  bd in block_dices]) 
+
+def block(game): #stolen from scripted bot 
+    """
+    Select block die or reroll.
+    """
+    
+    #TODO - remove game
+    
+    
+    
+    
+    proc = game.get_procedure()
+    
+    if isinstance(proc, ffai.Reroll): 
+        proc = proc.context 
+    
+    # Get attacker and defender
+    attacker = proc.attacker
+    defender = proc.defender
+    is_blitz = proc.blitz
+    dice = game.num_block_dice(attacker, defender, blitz=is_blitz)    
+    
+    # Loop through available dice results
+    actions = set()
+    for action_choice in game.state.available_actions:
+        actions.add(action_choice.action_type)
+
+    # 1. DEFENDER DOWN
+    if ActionType.SELECT_DEFENDER_DOWN in actions:
+        return Action(ActionType.SELECT_DEFENDER_DOWN)
+
+    if ActionType.SELECT_DEFENDER_STUMBLES in actions and not (defender.has_skill(Skill.DODGE) and not attacker.has_skill(Skill.TACKLE)):
+        return Action(ActionType.SELECT_DEFENDER_STUMBLES)
+
+    if ActionType.SELECT_BOTH_DOWN in actions and not defender.has_skill(Skill.BLOCK) and attacker.has_skill(Skill.BLOCK):
+        return Action(ActionType.SELECT_BOTH_DOWN)
+
+    # 2. BOTH DOWN if opponent carries the ball and doesn't have block
+    if ActionType.SELECT_BOTH_DOWN in actions and game.get_ball_carrier() == defender and not defender.has_skill(Skill.BLOCK):
+        return Action(ActionType.SELECT_BOTH_DOWN)
+
+    # 3. USE REROLL if defender carries the ball
+    if ActionType.USE_REROLL in actions and game.get_ball_carrier() == defender:
+        return Action(ActionType.USE_REROLL)
+
+    # 4. PUSH
+    if ActionType.SELECT_DEFENDER_STUMBLES in actions:
+        return Action(ActionType.SELECT_DEFENDER_STUMBLES)
+
+    if ActionType.SELECT_PUSH in actions:
+        return Action(ActionType.SELECT_PUSH)
+
+    # 5. BOTH DOWN
+    if ActionType.SELECT_BOTH_DOWN in actions:
+        return Action(ActionType.SELECT_BOTH_DOWN)
+
+    # 6. USE REROLL to avoid attacker down unless a one-die block
+    if ActionType.USE_REROLL in actions and dice > 1:
+        return Action(ActionType.USE_REROLL)
+
+    # 7. ATTACKER DOWN
+    if ActionType.SELECT_ATTACKER_DOWN in actions:
+        return Action(ActionType.SELECT_ATTACKER_DOWN)
+
+
 #def if_select_player: 
 #    action_type_available( ActionType.SELECT_PLAYER, game)
 
@@ -401,7 +474,7 @@ def choose_place_ball_middle(game):
 def main():
     
     FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
-    #FFAIEnv.remove_actiontype(ActionType.PLACE_BALL)
+    FFAIEnv.add_scripted_behavior(is_block_dice, block )
     
     
     FFAIEnv.add_scripted_behavior(if_kick_receive, choose_receive )
@@ -426,7 +499,12 @@ def main():
         #ActionType.START_BLITZ,
         ActionType.START_PASS,
         ActionType.START_FOUL,
-        ActionType.START_HANDOFF
+        ActionType.START_HANDOFF,
+        ActionType.SELECT_ATTACKER_DOWN,
+        ActionType.SELECT_BOTH_DOWN,
+        ActionType.SELECT_PUSH,
+        ActionType.SELECT_DEFENDER_STUMBLES,
+        ActionType.SELECT_DEFENDER_DOWN,
     ]
     for a in actions_removed: 
         FFAIEnv.remove_actiontype(a)
