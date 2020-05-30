@@ -409,10 +409,6 @@ def block(game): #stolen from scripted bot
     """
     
     #TODO - remove game
-    
-    
-    
-    
     proc = game.get_procedure()
     
     if isinstance(proc, ffai.Reroll): 
@@ -658,13 +654,6 @@ def main():
                 action_objects.append(action_object)
 
             obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty)
-            #envs.render()
-
-            '''
-            for j in range(len(obs)):
-                ob = obs[j]
-                renderer.render(ob, j)
-            '''
 
             reward = torch.from_numpy(np.expand_dims(np.stack(env_reward), 1)).float()
             shaped_reward = torch.from_numpy(np.expand_dims(np.stack(shaped_reward), 1)).float()

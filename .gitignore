@@ -3,3 +3,4 @@ __pycache__/*.pyc
 a2c/models/*
 a2c/plots/*
 a2c/logs/*
+*.pyc
