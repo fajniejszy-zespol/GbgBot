@@ -107,33 +107,37 @@ def game_to_turn(env):
     
     while game.get_procedure().__class__.__name__ != "Turn": 
         game.step( env.game._forced_action() )
+    game.step( env.game._forced_action() )
     
-    #reset ball to on the floor 
-    # env.game.state.pitch.balls.clear()
-    
+    board_x_max = len(game.state.pitch.board[0]) 
+    board_y_max = len(game.state.pitch.board)
     
     #reset players to up and in the buttom wing
-    next_x_pos = 10
-    y_pos = 15
-    for player in game.state.home_team.players: 
-        if player.position is not None:
-            # Set to ready
-            player.state.reset()
-            player.state.up = True
-            
-            position = ffai.core.model.Square(next_x_pos, y_pos)
-            while game.state.pitch.board[position.y][position.x] is not None:
-                next_x_pos += 1 
-                if next_x_pos > 25: 
-                    print("ERRORORORORO ")
-                    exit()
+    y_pos = 1
+    for players in [game.state.home_team.players, game.state.away_team.players]: 
+        next_x_pos = 2
+        for player in players: 
+            if player.position is not None:
+                # Set to ready
+                player.state.reset()
+                player.state.up = True
+                
                 position = ffai.core.model.Square(next_x_pos, y_pos)
-            
-            game.move(player, position) 
-            
-    
+                while game.state.pitch.board[position.y][position.x] is not None:
+                    next_x_pos += 1 
+                    if next_x_pos >= board_x_max: 
+                        print("ERRORORORORO ")
+                        exit()
+                    position = ffai.core.model.Square(next_x_pos, y_pos)
+                
+                game.move(player, position) 
+        y_pos = board_y_max -2 
 
-    
+    #self._reset_lecture(game)
+
+
+game_to_turn(env)
+env.render() 
     
     
 #reward = RewardCalculation(env.game, team1)
