@@ -4,12 +4,15 @@ from ffai.core.table import ActionType
 import random 
 from random import randint 
 from pdb import set_trace
+from copy import deepcopy 
 
 def get_home_players(game): 
-    return [p for p in game.state.home_team.players if p.position is not None ]
+    players = [p for p in game.state.home_team.players if p.position is not None ]
+    return random.sample(players, len(players))
+    
 def get_away_players(game): 
-    return [p for p in game.state.away_team.players if p.position is not None ]
-
+    players = [p for p in game.state.away_team.players if p.position is not None ]
+    return random.sample(players, len(players))
     
     
 def scatter_ball(game, steps, from_position): 
@@ -99,9 +102,9 @@ class Lecture:
     def get_level(self): 
         return min( int(self.level), self.max_level) 
     
-    def reset_env(self, env): 
-        env.reset()
-        game = env.game 
+    def reset_game(self, game): 
+        
+
         
         while True:  
             proc = game.get_procedure()
@@ -111,19 +114,20 @@ class Lecture:
                 break
             try: 
                 while True: 
-                    a = env.game._forced_action() 
+                    a = game._forced_action() 
                     if a.action_type.name != ActionType.PLACE_PLAYER: 
                         break  
                 #a = env.game._forced_action() 
                 game.step( a )
             except AssertionError as e: 
-                print("Assertion error!")
-                set_trace() 
-                print(proc)
-                print(a)
-            except AttributeError: 
-                set_trace() 
-                
+                pass
+                #print("Assertion error!")
+                #print(proc)
+                #print(a)
+                #print(e)
+            #except AttributeError: 
+            #    print 
+        
         #game.step( env.game._forced_action() )
         
         board_x_max = len(game.state.pitch.board[0]) 
@@ -151,7 +155,6 @@ class Lecture:
                         
                         if game.state.pitch.board[position.y][position.x] is None:
                             break 
-                        
                     
                     game.move(player, position) 
             y_pos = board_y_max -2 
@@ -165,7 +168,7 @@ class Lecture:
     
     
     
-class GbgTrainer: 
+class Academy: 
     
     def __init__(self, lectures): 
         self.lectures       = {} 
@@ -179,11 +182,11 @@ class GbgTrainer:
         
     def get_next_lecture(self):
         #TODO: modify distribution according to progress 
-        return random.choice(self.lectures) 
         
-    def log_training(self, result): 
-        outcome = result["outcome"]
-        name = result["name"]
+        
+        return random.choice( list(self.lectures.values()) ) 
+        
+    def log_training(self, name, outcome): 
         
         # increase difficulty 
         if outcome == True: 
@@ -198,12 +201,14 @@ class GbgTrainer:
             pass 
             
         
-    def report_training(self, filename): 
+    def report_training(self, filename=None): 
         # render plots 
-        print("reporting from Gbg Trainer")
+        
+        
+        s="reporting from Gbg Trainer: "
         for l in self.lectures.values(): 
-            print(l.name, " - ", l.get_diff() ) 
-            
+            s += l.name + " - " + "{:.4f}".format(l.get_diff()) +" (" + str(l.get_level()) + "/" +str(l.max_level) + ")" 
+        return s
             
 class Scoring(Lecture): 
     def __init__(self): 
@@ -217,7 +222,7 @@ class Scoring(Lecture):
         board_x_max = len(game.state.pitch.board[0]) -2  
         board_y_max = len(game.state.pitch.board) -2
     
-        home_players = random.sample( get_home_players(game), len(get_home_players(game) ) )
+        home_players = get_home_players(game)
         
         level = self.get_level()
         #away_players = random.sample(game.state.home_team.players)
@@ -245,24 +250,14 @@ class Scoring(Lecture):
         for p in get_away_players(game): 
             move_player_within_square(game, p, [dst_to_td+2+ball_start, 1], [board_x_max, board_y_max] )
         
-        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
     
-    def training_done(self, game): raise "not implemented"        
-    def allowed_fail_rate(self): raise "not implemented" 
+    def training_done(self, game): 
+        training_complete = self.turn  !=  game.state.home_team.state.turn
+        training_outcome = game.state.home_team.state.score > 0 
+        return training_complete, training_outcome
     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    def allowed_fail_rate(self): 
+        return 0 
     
     

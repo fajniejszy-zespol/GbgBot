@@ -67,7 +67,7 @@ def print_dict(d):
 
     
      
-pitch_size = 7
+pitch_size = 11
 
 # Load configurations, rules, arena and teams
 #config = ffai.load_config("bot-bowl-ii")
@@ -89,7 +89,7 @@ env =  ffai.FFAIEnv(config, team1, team2)
 
 seed = 1315
 env.seed(seed)
-obs = env.reset()
+
 
 #obs = env.step( get_random_action(env) )
 #obs = env.step( get_random_action(env) )
@@ -140,8 +140,9 @@ def game_to_turn(env):
 
 score = gc.Scoring() 
 score.level = 2
-score.reset_env(env) 
+
 #reward = RewardCalculation(env.game, team1)
+obs = env.reset(score)
 env.render()
 
 def main():     
@@ -168,12 +169,13 @@ def main():
             reset = True 
         
         if reset: 
-            score.reset_env(env)
+            obs = env.reset(score)
             
             reset = False 
             #print("----RESET-----")
             prev_action = []            
             env.render()
+            input()
            
             if as_it_should_be + as_it_shouldnt > 0: 
                 print("Failure rate = ", 100*  as_it_shouldnt / (as_it_should_be + as_it_shouldnt), "% " )  

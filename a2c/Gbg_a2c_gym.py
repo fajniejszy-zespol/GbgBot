@@ -13,7 +13,9 @@ import sys
 from a2c_agent import A2CAgent
 import ffai
 import random
-import pdb
+from pdb import set_trace
+
+import GbG_curriculum as gc
 
 # Training configuration
 num_steps = 10000000
@@ -26,18 +28,18 @@ value_loss_coef = 0.5
 max_grad_norm = 0.05
 log_interval = 50
 save_interval = 500  
-ppcg = True
+ppcg = False
 
 # Environment
 #env_name = "FFAI-1-v2"
-env_name = "FFAI-3-v2"
+#env_name = "FFAI-3-v2"
 #num_steps = 10000000 # Increase training time
 #log_interval = 100
 #env_name = "FFAI-5-v2"
 #num_steps = 100000000 # Increase training time
 #log_interval = 1000
 #save_interval = 5000
-# env_name = "FFAI-v2"
+env_name = "FFAI-v2"
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Self-play
@@ -244,7 +246,7 @@ def worker(remote, parent_remote, env, worker_id):
         command, data = remote.recv()
         if command == 'step':
             steps += 1
-            action, dif = data[0], data[1]
+            action, dif, lecture = data[0], data[1], data[2]
             
             
            # s = "in worker, action is " + str(action)
@@ -271,7 +273,7 @@ def worker(remote, parent_remote, env, worker_id):
                     print("Max. number of steps exceeded! Consider increasing the number.")
                 done = True
                 env.opp_actor = next_opp
-                obs = env.reset()
+                obs = env.reset(lecture)
                 steps = 0
                 tds = 0
                 tds_opp = 0
@@ -311,14 +313,17 @@ class VecEnv():
         for remote in self.work_remotes:
             remote.close()
 
-    def step(self, actions, difficulty=1.0):
+    def step(self, actions, difficulty=1.0, lectures = None ):
         cumul_rewards = None
         cumul_shaped_rewards = None
         cumul_tds_scored = None
         cumul_tds_opp_scored = None
         cumul_dones = None
-        for remote, action in zip(self.remotes, actions):
-            remote.send(('step', [action, difficulty]))
+        if lectures == None: 
+            lectures = [None for _ in range(len(self.remotes))]
+            
+        for remote, action, lecture in zip(self.remotes, actions, lectures):
+            remote.send(('step', [action, difficulty, lecture]))
         results = [remote.recv() for remote in self.remotes]
         obs, rews, rews_shaped, tds, tds_opp, dones, infos = zip(*results)
         if cumul_rewards is None:
@@ -630,6 +635,8 @@ def main():
 
     renderer = ffai.Renderer()
 
+    academy = gc.Academy( [gc.Scoring()] )
+    
     while all_steps < num_steps:
 
         for step in range(steps_per_update):
@@ -653,8 +660,11 @@ def main():
                 }
                 action_objects.append(action_object)
 
-            obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty)
-
+            lectures = [ academy.get_next_lecture() for _ in range(num_processes) ]
+            
+            obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty,lectures=lectures)
+            
+            
             reward = torch.from_numpy(np.expand_dims(np.stack(env_reward), 1)).float()
             shaped_reward = torch.from_numpy(np.expand_dims(np.stack(shaped_reward), 1)).float()
             r = reward.numpy()
@@ -683,12 +693,15 @@ def main():
                         difficulty = min(1.0, max(0, difficulty))
                     else:
                         difficulty = 1
-                    episode_rewards.append(proc_rewards[i])
-                    episode_tds.append(proc_tds[i])
-                    episode_tds_opp.append(proc_tds_opp[i])
-                    proc_rewards[i] = 0
-                    proc_tds[i] = 0
-                    proc_tds_opp[i] = 0
+                    if "lecture" in info[i].keys(): 
+                        academy.log_training( info[i]["lecture"], info[i]["lecture_outcome"])
+                    else: 
+                        episode_rewards.append(proc_rewards[i])
+                        episode_tds.append(proc_tds[i])
+                        episode_tds_opp.append(proc_tds_opp[i])
+                        proc_rewards[i] = 0
+                        proc_tds[i] = 0
+                        proc_tds_opp[i] = 0
 
             # Update the observations returned by the environment
             spatial_obs, non_spatial_obs = update_obs(obs)
@@ -697,6 +710,8 @@ def main():
             memory.insert(step, spatial_obs, non_spatial_obs,
                           actions.data, values.data, shaped_reward, masks, action_masks)
 
+        print( academy.report_training() )
+        
         next_value = ac_agent(Variable(memory.spatial_obs[-1], requires_grad=False), Variable(memory.non_spatial_obs[-1], requires_grad=False))[0].data
 
         # Compute returns
