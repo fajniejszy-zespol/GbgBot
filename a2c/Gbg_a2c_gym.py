@@ -18,9 +18,9 @@ from pdb import set_trace
 import GbG_curriculum as gc
 
 # Training configuration
-num_steps = 10000000
-num_processes = 4
-steps_per_update = 40
+num_steps = 100000
+num_processes = 1
+steps_per_update = 4
 learning_rate = 0.001
 gamma = 0.99
 entropy_coef = 0.01
@@ -31,7 +31,7 @@ save_interval = 500
 ppcg = False
 
 # Environment
-#env_name = "FFAI-1-v2"
+env_name = "FFAI-1-v2"
 #env_name = "FFAI-3-v2"
 #num_steps = 10000000 # Increase training time
 #log_interval = 100
@@ -39,7 +39,7 @@ ppcg = False
 #num_steps = 100000000 # Increase training time
 #log_interval = 1000
 #save_interval = 5000
-env_name = "FFAI-v2"
+#env_name = "FFAI-v2"
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Self-play
@@ -164,6 +164,7 @@ class CNNPolicy(nn.Module):
         The forward functions defines how the data flows through the graph (layers)
         """
         # Spatial input through two convolutional layers
+        set_trace()
         x1 = self.conv1(spatial_input)
         x1 = F.relu(x1)
         x1 = self.conv2(x1)
@@ -498,9 +499,9 @@ def main():
         #ActionType.START_MOVE,
         #ActionType.START_BLOCK,
         #ActionType.START_BLITZ,
-        ActionType.START_PASS,
-        ActionType.START_FOUL,
-        ActionType.START_HANDOFF,
+        #ActionType.START_PASS,
+        #ActionType.START_FOUL,
+        #ActionType.START_HANDOFF,
         ActionType.SELECT_ATTACKER_DOWN,
         ActionType.SELECT_BOTH_DOWN,
         ActionType.SELECT_PUSH,
@@ -636,6 +637,14 @@ def main():
     renderer = ffai.Renderer()
 
     academy = gc.Academy( [gc.Scoring()] )
+    
+    
+    # ### remove this 
+    
+    value, action = ac_agent( spatial_obs, non_spatial_obs )
+    
+    exit() 
+    # ### end remove 
     
     while all_steps < num_steps:
 

@@ -138,29 +138,19 @@ def game_to_turn(env):
 
     #self._reset_lecture(game)
 
-score = gc.Scoring() 
-score.level = 2
+score = gc.HandoffAndScore() 
+score.level = 0
 
 #reward = RewardCalculation(env.game, team1)
 obs = env.reset(score)
-env.render()
+#env.render()
 
 def main():     
     pause_me = False 
     
-    assert env.game.get_ball_carrier() is not None 
     env.render()
-    prev_action = []
-    print("----RESET-----")
     
     reset = False 
-    
-    success_outcomes = set() 
-    failed_outcomes = set() 
-    
-    as_it_should_be = 0
-    as_it_shouldnt  = 0
-    
     
     while True: 
         try:
@@ -169,104 +159,18 @@ def main():
             reset = True 
         
         if reset: 
+            score.increase_diff()
             obs = env.reset(score)
             
             reset = False 
-            #print("----RESET-----")
-            prev_action = []            
             env.render()
-            input()
-           
-            if as_it_should_be + as_it_shouldnt > 0: 
-                print("Failure rate = ", 100*  as_it_shouldnt / (as_it_should_be + as_it_shouldnt), "% " )  
-            
-            
+            if input()=="x": 
+                set_trace()
             continue 
             
-        #print("action choice: ", str(action))
         
-        #if (action["action-type"] == ActionType.MOVE):
-        
-        proc = env.game.get_procedure()
-        
-        if hasattr(proc, "player"): 
-            p = proc.player 
-        
-            ballHolder = env.game.get_ball_carrier() 
-            
-            if ballHolder is not None and ballHolder == p: 
-                
-                
-                if (action["action-type"] == ActionType.MOVE):
-                
-                    
-                    
-                    s = "---Moving ball: " +  str(proc.player_action_type)
-                    #print(proc.player_action_type)
-                    
-                    dodge = False 
-                    if env.game.num_tackle_zones_in(p)>0: 
-                        dodge = True 
-                    #input() 
-                    #env.render()
-                    #set_trace()
-                    
-                    obs = env.step( action )
-                    env.render()
-                    ball = env.game.get_ball()
-                    turn = env.game.state.home_team.state.turn
-                    half = env.game.state.half 
-                    
-                    if ball is not None and ball.position is not None and env.game.get_ball_carrier() is None and p.state.up: 
-                        
-                        #print ("  BALL FUCKED!")
-                        if dodge:
-                            print ("  BALL FUCKED!")
-                            print("  DODGE ")
-                            input() 
-                        #print(s)
-                        #print ("  turn:", turn)
-                        #print ("  previous actions (", len(prev_action),end="): ")
-                        #for a in prev_action:
-                        #    print(a, end =" ")
-                        #print("")
-                        
-                        as_it_shouldnt  += 1 
-                        
-                        for x in env.game.state.reports: 
-                            #if x.outcome_type in kickoff_weathers: 
-                            failed_outcomes.add(x.outcome_type.name)
-                        #if len(success_outcomes)>0 and len(failed_outcomes)>0: 
-                         #   for x in failed_outcomes.difference(success_outcomes): 
-                          #      print(x)    
-                        
-                        #input() 
-                        
-                    elif ball is not None and ball.position is not None and env.game.get_ball_carrier() is not None and half == 1: 
-                        #print("success moved ball: ", end ="")
-                        #print ("previous actions (", len(prev_action),end="): ")
-                        #for a in prev_action:
-                        #    print(a, end =" ")
-                        #print("")
-                        for x in env.game.state.reports: 
-                            #if x.outcome_type in kickoff_weathers: 
-                            success_outcomes.add(x.outcome_type.name)
-                        
-                        as_it_should_be += 1
-                    
-                    
-                    reset = True     
-                    continue
-                else: 
-                    prev_action.append( action["action-type"] )
         
         obs = env.step( action )
-        
-        #r = reward.get_reward(obs)
-        #env.render(reward_array=r)
-        #env.render() 
-        
-        
         
         
 if __name__ == "__main__":
