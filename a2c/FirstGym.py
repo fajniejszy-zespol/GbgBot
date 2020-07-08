@@ -11,6 +11,7 @@ from ffai.core.table import *
 from time import sleep 
 
 import GbG_curriculum as gc
+import Gbg_a2c_gym as gbgGym
 
 setup_actions =set([ffai.ActionType.SETUP_FORMATION_WEDGE,
                             ffai.ActionType.SETUP_FORMATION_LINE,
@@ -81,7 +82,6 @@ arena = ffai.load_arena(config.arena)
 team1 = ffai.load_all_teams(ruleset, pitch_size)[0] 
 team2 = ffai.load_all_teams(ruleset, pitch_size)[0] 
 
-
 opponent_bot = MyScriptedBot('scripted')
     
 #env =  ffai.FFAIEnv(config, team1, team2, opp_actor=opponent_bot)
@@ -138,8 +138,8 @@ def game_to_turn(env):
 
     #self._reset_lecture(game)
 
-score = gc.HandoffAndScore() 
-score.level = 0
+score = gc.CrowdSurf() 
+#score.level = 0
 
 #reward = RewardCalculation(env.game, team1)
 obs = env.reset(score)
@@ -149,7 +149,7 @@ def main():
     pause_me = False 
     
     env.render()
-    
+    prev_super_shaped = None 
     reset = False 
     
     while True: 
@@ -160,6 +160,9 @@ def main():
         
         if reset: 
             score.increase_diff()
+            #score.level += 0.4
+            print("Scoring lecture level: {}".format(score.get_level() )) 
+            prev_super_shaped = None
             obs = env.reset(score)
             
             reset = False 
@@ -170,8 +173,10 @@ def main():
             
         
         
-        obs = env.step( action )
-        
+        obs, reward, done, info = env.step( action )
+        reward_shaped, prev_super_shaped = gbgGym.reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
+            
+        reset = True 
         
 if __name__ == "__main__":
     main() 

@@ -5,6 +5,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 from multiprocessing import Process, Pipe
 from ffai.ai.layers import *
+import ffai.ai.pathfinding as pf 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,13 +16,15 @@ import ffai
 import random
 from pdb import set_trace
 
+from Gbg_bot_functions import * 
+
 import GbG_curriculum as gc
 
 # Training configuration
-num_steps = 100000
-num_processes = 1
-steps_per_update = 4
-learning_rate = 0.001
+num_steps = 10000000
+num_processes = 8
+steps_per_update = 30
+learning_rate = 0.001 #0.001
 gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
@@ -31,26 +34,24 @@ save_interval = 500
 ppcg = False
 
 # Environment
-env_name = "FFAI-1-v2"
-#env_name = "FFAI-3-v2"
-#num_steps = 10000000 # Increase training time
-#log_interval = 100
-#env_name = "FFAI-5-v2"
-#num_steps = 100000000 # Increase training time
-#log_interval = 1000
-#save_interval = 5000
+
+env_name = "FFAI-5-v2"
 #env_name = "FFAI-v2"
+
+num_steps = 10000000 
+log_interval = 10
+save_interval = 1000
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Self-play
-selfplay = False  # Use this to enable/disable self-play
+selfplay = True  # Use this to enable/disable self-play
 selfplay_window = 1
 selfplay_save_steps = int(num_steps / 10)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
-num_hidden_nodes = 128
-num_cnn_kernels = [32, 16]
+num_hidden_nodes = 256
+num_cnn_kernels = [32, 32]
 
 model_name = env_name
 log_filename = "logs/" + model_name + ".dat"
@@ -67,24 +68,48 @@ ensure_dir("plots/")
 
 # --- Reward function ---
 rewards_own = {
-    OutcomeType.TOUCHDOWN: 1,
-    OutcomeType.CATCH: 0.1,
-    OutcomeType.INTERCEPTION: 0.2,
-    OutcomeType.SUCCESSFUL_PICKUP: 0.1,
-    OutcomeType.FUMBLE: -0.1,
-    OutcomeType.KNOCKED_DOWN: -0.1,
-    OutcomeType.KNOCKED_OUT: -0.2,
-    OutcomeType.CASUALTY: -0.5
+    #Scoring 
+    OutcomeType.TOUCHDOWN:          2,
+    
+    #Ball handling 
+    OutcomeType.CATCH:              0.1,
+    OutcomeType.INTERCEPTION:       0.2,
+    OutcomeType.SUCCESSFUL_PICKUP:  0.1,
+    OutcomeType.FUMBLE:            -0.5,
+    OutcomeType.FAILED_CATCH:      -0.1, 
+    OutcomeType.INACCURATE_PASS:   -0.1,
+    
+    
+    #Fighting 
+    OutcomeType.KNOCKED_DOWN:      -0.1, #always reported when knocked down. Add Stun/KO/cas after
+    OutcomeType.STUNNED:           -0.1, 
+    OutcomeType.KNOCKED_OUT:       -0.2,
+    OutcomeType.CASUALTY:          -0.5,
+    OutcomeType.PUSHED_INTO_CROWD: -0.15, 
+    OutcomeType.PLAYER_EJECTED:    -0.5, 
+    
 }
 rewards_opp = {
-    OutcomeType.TOUCHDOWN: -1,
-    OutcomeType.CATCH: -0.1,
-    OutcomeType.INTERCEPTION: -0.2,
+    #Scoring 
+    OutcomeType.TOUCHDOWN:         -2,
+    
+    #Ball handling 
+    OutcomeType.CATCH:             -0.1,
+    OutcomeType.INTERCEPTION:      -0.2,
     OutcomeType.SUCCESSFUL_PICKUP: -0.1,
-    OutcomeType.FUMBLE: 0.1,
-    OutcomeType.KNOCKED_DOWN: 0.1,
-    OutcomeType.KNOCKED_OUT: 0.2,
-    OutcomeType.CASUALTY: 0.5
+    OutcomeType.FUMBLE:             0.5,#0.1,
+    OutcomeType.FAILED_CATCH:       0.1,
+    OutcomeType.INACCURATE_PASS:    0.1,
+    OutcomeType.TOUCHBACK:         -0.4,
+    
+    #Fighting 
+    OutcomeType.KNOCKED_DOWN:       0.1, #always reported when knocked down. Add Stun/KO/cas after
+    OutcomeType.STUNNED:            0.1,
+    OutcomeType.KNOCKED_OUT:        0.2,
+    OutcomeType.CASUALTY:           0.5,
+    OutcomeType.PUSHED_INTO_CROWD:  0.15, 
+    OutcomeType.PLAYER_EJECTED:     0.5,
+    
 }
 ball_progression_reward = 0.005
 
@@ -128,13 +153,17 @@ class Memory(object):
 
 
 class CNNPolicy(nn.Module):
-    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions):
+    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types, non_spat_actions):
         super(CNNPolicy, self).__init__()
 
+        
+        self.non_spat_actions = non_spat_actions
+        
         # Spatial input stream
-        self.conv1 = nn.Conv2d(spatial_shape[0], out_channels=kernels[0], kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0], out_channels=kernels[1], kernel_size=5, stride=1, padding=2)
-
+        self.conv1 = nn.Conv2d(spatial_shape[0],        out_channels=kernels[0],            kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=5, stride=1, padding=2)
+        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=spatial_action_types,  kernel_size=5, stride=1, padding=2)
+        
         # Non-spatial input stream
         self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
 
@@ -144,52 +173,71 @@ class CNNPolicy(nn.Module):
         self.linear1 = nn.Linear(stream_size, hidden_nodes)
 
         # The outputs
-        self.critic = nn.Linear(hidden_nodes, 1)
         self.actor = nn.Linear(hidden_nodes, actions)
-
+        
+        # Critic stream 
+        critic_stream_size = actions + kernels[1] * spatial_shape[1] * spatial_shape[2]
+        self.critic1 = nn.Linear(critic_stream_size, hidden_nodes)
+        self.critic2 = nn.Linear(hidden_nodes, 1)
+        
+        
         self.train()
         self.reset_parameters()
 
     def reset_parameters(self):
         relu_gain = nn.init.calculate_gain('relu')
+        
         self.conv1.weight.data.mul_(relu_gain)
         self.conv2.weight.data.mul_(relu_gain)
+        self.conv3.weight.data.mul_(relu_gain)
+        
         self.linear0.weight.data.mul_(relu_gain)
         self.linear1.weight.data.mul_(relu_gain)
         self.actor.weight.data.mul_(relu_gain)
-        self.critic.weight.data.mul_(relu_gain)
+        self.critic1.weight.data.mul_(relu_gain)
+        self.critic2.weight.data.mul_(relu_gain)
 
     def forward(self, spatial_input, non_spatial_input):
         """
         The forward functions defines how the data flows through the graph (layers)
         """
-        # Spatial input through two convolutional layers
-        set_trace()
+        # Spatial input through convolutional layers
         x1 = self.conv1(spatial_input)
         x1 = F.relu(x1)
         x1 = self.conv2(x1)
         x1 = F.relu(x1)
-
+        x_extra = self.conv3(x1)
+        
         # Concatenate the input streams
         flatten_x1 = x1.flatten(start_dim=1)
-
+        flatten_x_extra = x_extra.flatten(start_dim=1)
+        
         x2 = self.linear0(non_spatial_input)
         x2 = F.relu(x2)
-
         flatten_x2 = x2.flatten(start_dim=1)
-        concatenated = torch.cat((flatten_x1, flatten_x2), dim=1)
-
+        
+        concatenated = torch.cat( (flatten_x1, flatten_x2), dim=1)
+        
         # Fully-connected layers
         x3 = self.linear1(concatenated)
         x3 = F.relu(x3)
-        #x2 = self.linear2(x2)
-        #x2 = F.relu(x2)
-
+        
         # Output streams
-        value = self.critic(x3)
-        actor = self.actor(x3)
-
-        # return value, policy
+        index = self.non_spat_actions
+        
+        actor = self.actor(x3) 
+        actor[:,index: ] += flatten_x_extra  #Add x_extra to spatial actions 
+        
+        #Concat actor and x1 
+        x_critic_stream = torch.cat( (actor, flatten_x1), dim=1) 
+        
+        #Apply linear_critic1
+        x_critic_stream = self.critic1(x_critic_stream)
+        x_critic_stream = F.relu(x_critic_stream)
+        
+        #Apply linear_critic2 
+        value = self.critic2(x_critic_stream)
+        
         return value, actor
 
     def act(self, spatial_inputs, non_spatial_input, action_mask):
@@ -217,7 +265,44 @@ class CNNPolicy(nn.Module):
         return values, action_probs
 
 
-def reward_function(env, info, shaped=False):
+def reward_score_threat(game, players): 
+    score_probs = [] 
+    ball_carrier = game.get_ball_carrier() 
+    for p in players: 
+        #If player up and within scoring range 
+        if p.state.up: 
+            #calculate scoring probability 
+            old_used = p.state.used
+            p.state.used = False 
+            
+            #Todo: make 
+            prob = pf.get_safest_path_to_endzone(game, p) 
+            
+            p.state.used = old_used 
+            
+            if prob is None or prob.prob <= 0: 
+                continue 
+            
+            prob = prob.prob 
+            
+            #if not holding ball, multiply catch modifiers
+            if p != ball_carrier: 
+                prob *= game.get_catch_prob(p, accurate=True)
+            
+            
+            score_probs.append(prob)
+            
+            if prob >= 4/6: 
+                break 
+            
+            
+    #score_probs.sort(reverse=True)
+    if len(score_probs)>0:
+        return max( score_probs )
+    else: 
+        return 0 
+        
+def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, debug=False ):
     r = 0
     for outcome in env.get_outcomes():
         if not shaped and outcome.outcome_type != OutcomeType.TOUCHDOWN:
@@ -233,7 +318,137 @@ def reward_function(env, info, shaped=False):
             r += rewards_opp[outcome.outcome_type]
     if info['ball_progression'] > 0:
         r += info['ball_progression'] * ball_progression_reward
-    return r
+    
+    super_shaped = 0
+    if obs is not None: 
+        super_shaped = 0
+        
+        # Reward players and tz the 5-by-5 square with ball in middle 
+        if True: 
+            b = env.game.get_ball()
+            if b is None: 
+                return r, None
+            
+            x = b.position.x
+            y = b.position.y 
+            
+            x_max = len(env.game.state.pitch.board[0]) -2  
+            y_max = len(env.game.state.pitch.board) -2
+            
+            dx_neg = min(2, x-1) 
+            dx_pos = min(2, x_max-x)
+            dy_neg = min(2, y-1)
+            dy_pos = min(2, y_max-y)
+            
+            x_start = x - dx_neg
+            x_end   = x + dx_pos +1
+            y_start = y - dy_neg
+            y_end   = y + dy_pos +1
+            
+            
+            
+            player_in_ballzone_reward = 0.1 # min arbitrated with 6
+            tz_ballzone_reward = 0.01
+            tz_on_ball = 0.1 #min arbitrated with 4 
+            
+            # Opp players in ball zone
+            opp_layer = obs['board']["opp players"][y_start:y_end , x_start:x_end ]
+            up_layer = obs['board']["standing players"][ y_start:y_end , x_start:x_end ]
+            opp_close_to_ball = np.multiply( opp_layer, up_layer).sum() 
+            opp_close_to_ball = min( opp_close_to_ball, 6) * player_in_ballzone_reward
+            #REWARD - Opp players in ball zone  
+            super_shaped -= opp_close_to_ball
+            
+            # Opp tz in ball zone 
+            opp_tz_layer = obs['board']["opp tackle zones"][ y_start:y_end , x_start:x_end ]
+            opp_nbr_of_tz = (opp_tz_layer>0).sum()   
+            opp_nbr_of_tz *= tz_ballzone_reward
+            #REWARD - Opp tz in ball zone  
+            super_shaped -= opp_nbr_of_tz 
+            
+            opp_tz_ball = obs['board']["opp tackle zones"][ y,x] / 0.125
+            opp_tz_ball = min(opp_tz_ball, 4) * tz_on_ball
+            #REWARD - Opp TZ on ball 
+            super_shaped -= opp_tz_ball
+            if debug: print("Reward - Away tz: {} - {} -  {} ".format(opp_close_to_ball, opp_nbr_of_tz, opp_tz_ball ) )
+            
+            # Own players in ball zone
+            own_layer = obs['board']["own players"][y_start:y_end , x_start:x_end ]
+            own_in_ballzone = np.multiply( own_layer, up_layer).sum() 
+            own_in_ballzone = min(own_in_ballzone, 6) * player_in_ballzone_reward
+            #REWARD - Own players in ball zone  
+            super_shaped += own_in_ballzone
+            
+            # Own tz in ball zone 
+            own_tz_layer = obs['board']["own tackle zones"][ y_start:y_end , x_start:x_end ]
+            own_tz_ballzone = (own_tz_layer>0).sum()
+            own_tz_ballzone *= tz_ballzone_reward
+            #REWARD - Own tz in ball zone  
+            super_shaped += own_tz_ballzone
+            
+            own_tz_ball = obs['board']["own tackle zones"][ y,x] / 0.125
+            own_tz_ball = min(own_tz_ball, 4) * tz_on_ball 
+            #REWARD - Own TZ on ball 
+            super_shaped += own_tz_ball 
+            
+            if debug: print("Reward - Home tz: {} - {} - {}".format(own_in_ballzone, own_tz_ballzone, own_tz_ball)   )
+            
+        # Reward for having two scoring threats 
+        if False: 
+            home_players = gc.get_home_players(env.game) 
+            away_players = gc.get_away_players(env.game)
+            
+            home_score_threat = reward_score_threat( env.game, home_players )
+            away_score_threat = reward_score_threat( env.game, away_players )
+            
+            
+            super_shaped += home_score_threat
+            super_shaped -= away_score_threat
+        
+            if debug: print("Reward scoring threat, home vs. away: {} - {}".format(home_score_threat, away_score_threat))
+        
+        # Reward screening 
+        if True: 
+            
+            away_ps = gc.get_away_players(env.game)
+            home_players = gc.get_home_players(env.game)
+            if env.game.get_ball_carrier() in home_players or len(away_ps)==0: 
+                unmarked_tz_reward = 1 #Give max if screen is not needed. 
+                
+            else: 
+                #Only consider relevant tacklezones between ball and own td 
+                
+                away_mean_pos = np.mean( [ [p.position.x, p.position.y] for p in away_ps], axis=0)
+                away_mean_x = int( round(away_mean_pos[0]) ) 
+                away_mean_y = int( round(away_mean_pos[1]) )
+                
+                tz = obs['board']["own unmarked tackle zones"][:, :away_mean_x] > 0
+                
+                covered_lanes = (np.multiply( tz[:-1], tz[1:]).sum(axis=1)>0).astype(float)
+                
+                weight = np.array( [1,1,1,1,.8,.6, .4, .1, 0,0,0,0,0,0,0,0,0,0,0] )
+
+                weight_mask = np.zeros( covered_lanes.shape ) 
+                weight_mask[ away_mean_y::-1] = weight[:away_mean_y+1] 
+                weight_mask[ away_mean_y:] = weight[: len(weight_mask[ away_mean_y:]) ] 
+                
+                #REWARD - Screening with unmarked tacklezones 
+                unmarked_tz_reward = np.dot( covered_lanes, weight_mask ) 
+                
+                normalization = np.ones( covered_lanes.shape) 
+                unmarked_tz_reward /= np.dot( normalization, weight_mask ) 
+                
+                if debug: print("unmarked single tz screen: {}".format( unmarked_tz_reward ) ) 
+            
+            
+            super_shaped += unmarked_tz_reward
+            
+            
+        
+        if prev_super_shaped is not None:
+            r += super_shaped - prev_super_shaped 
+    
+    return r, super_shaped
 
 def worker(remote, parent_remote, env, worker_id):
     parent_remote.close()
@@ -243,6 +458,8 @@ def worker(remote, parent_remote, env, worker_id):
     tds_opp = 0
     next_opp = ffai.make_bot('random')
 
+    prev_super_shaped = None
+    
     while True:
         command, data = remote.recv()
         if command == 'step':
@@ -258,7 +475,7 @@ def worker(remote, parent_remote, env, worker_id):
             tds = info['touchdowns']
             tds_opp_scored = info['opp_touchdowns'] - tds_opp
             tds_opp = info['opp_touchdowns']
-            reward_shaped = reward_function(env, info, shaped=True)
+            reward_shaped, prev_super_shaped = reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
             ball_carrier = env.game.get_ball_carrier()
             # PPCG
             if dif < 1.0:
@@ -280,12 +497,13 @@ def worker(remote, parent_remote, env, worker_id):
                 tds_opp = 0
             remote.send((obs, reward, reward_shaped, tds_scored, tds_opp_scored, done, info))
         elif command == 'reset':
-            dif = data
+            dif, lecture = data[0], data[1]
             steps = 0
             tds = 0
             tds_opp = 0
             env.opp_actor = next_opp
-            obs = env.reset()
+            prev_super_shaped = None 
+            obs = env.reset(lecture)
             # set_difficulty(env, dif)
             remote.send(obs)
         elif command == 'render':
@@ -295,7 +513,7 @@ def worker(remote, parent_remote, env, worker_id):
         elif command == 'close':
             break
 
-
+            
 class VecEnv():
     def __init__(self, envs):
         """
@@ -320,6 +538,7 @@ class VecEnv():
         cumul_tds_scored = None
         cumul_tds_opp_scored = None
         cumul_dones = None
+        #set_trace() 
         if lectures == None: 
             lectures = [None for _ in range(len(self.remotes))]
             
@@ -343,9 +562,11 @@ class VecEnv():
             cumul_dones |= np.stack(dones)
         return np.stack(obs), cumul_rewards, cumul_shaped_rewards, cumul_tds_scored, cumul_tds_opp_scored, cumul_dones, infos
 
-    def reset(self, difficulty=1.0):
-        for remote in self.remotes:
-            remote.send(('reset', difficulty))
+    def reset(self, difficulty=1.0, lectures = None ):
+        if lectures == None: lectures = [None for _ in range(len(self.remotes))]
+        
+        for remote, lecture in zip(self.remotes, lectures):
+            remote.send(('reset', [difficulty, lecture] ))
         return np.stack([remote.recv() for remote in self.remotes])
 
     def render(self):
@@ -370,151 +591,48 @@ class VecEnv():
     def num_envs(self):
         return len(self.remotes)
 
-
-def action_type_available(action_type, game): 
-    return action_type in [a.action_type for a in game.get_available_actions()]
-        
-def if_kick_receive(game): 
-    return action_type_available(ActionType.RECEIVE, game)
-def choose_receive(game): 
-    #print("in action function")
-    return Action(ActionType.KICK)
-
-def if_place_ball(game): 
-    return action_type_available( ActionType.PLACE_BALL, game )
-def choose_place_ball_middle(game): 
-    board_x_max = len(game.state.pitch.board[0]) 
-    board_y_max = len(game.state.pitch.board) 
-    
-    y = int(board_y_max/2)+1
-    x = int(board_x_max/4)
-    
-    left_center = Square(x, y) 
-    action = Action(ActionType.PLACE_BALL, position=left_center)
-    
-    if game._is_action_allowed(action):
-        #print("correct place ball guess")
-        return action 
-    else: 
-        print("wrong place ball guess")
-        right_center = Square( int(board_x_max*3/4), y)
-        return Action(ActionType.PLACE_BALL, position=right_center)
-
-def is_block_dice(game): 
-    actions = [a.action_type for a in game.get_available_actions()]
-    block_dices = [ ActionType.SELECT_PUSH,
-                    ActionType.SELECT_ATTACKER_DOWN,
-                    ActionType.SELECT_BOTH_DOWN,
-                    ActionType.SELECT_DEFENDER_STUMBLES,
-                    ActionType.SELECT_DEFENDER_DOWN]
-    return any( [ (bd in actions) for  bd in block_dices]) 
-
-def block(game): #stolen from scripted bot 
-    """
-    Select block die or reroll.
-    """
-    
-    #TODO - remove game
-    proc = game.get_procedure()
-    
-    if isinstance(proc, ffai.Reroll): 
-        proc = proc.context 
-    
-    # Get attacker and defender
-    attacker = proc.attacker
-    defender = proc.defender
-    is_blitz = proc.blitz
-    dice = game.num_block_dice(attacker, defender, blitz=is_blitz)    
-    
-    # Loop through available dice results
-    actions = set()
-    for action_choice in game.state.available_actions:
-        actions.add(action_choice.action_type)
-
-    # 1. DEFENDER DOWN
-    if ActionType.SELECT_DEFENDER_DOWN in actions:
-        return Action(ActionType.SELECT_DEFENDER_DOWN)
-
-    if ActionType.SELECT_DEFENDER_STUMBLES in actions and not (defender.has_skill(Skill.DODGE) and not attacker.has_skill(Skill.TACKLE)):
-        return Action(ActionType.SELECT_DEFENDER_STUMBLES)
-
-    if ActionType.SELECT_BOTH_DOWN in actions and not defender.has_skill(Skill.BLOCK) and attacker.has_skill(Skill.BLOCK):
-        return Action(ActionType.SELECT_BOTH_DOWN)
-
-    # 2. BOTH DOWN if opponent carries the ball and doesn't have block
-    if ActionType.SELECT_BOTH_DOWN in actions and game.get_ball_carrier() == defender and not defender.has_skill(Skill.BLOCK):
-        return Action(ActionType.SELECT_BOTH_DOWN)
-
-    # 3. USE REROLL if defender carries the ball
-    if ActionType.USE_REROLL in actions and game.get_ball_carrier() == defender:
-        return Action(ActionType.USE_REROLL)
-
-    # 4. PUSH
-    if ActionType.SELECT_DEFENDER_STUMBLES in actions:
-        return Action(ActionType.SELECT_DEFENDER_STUMBLES)
-
-    if ActionType.SELECT_PUSH in actions:
-        return Action(ActionType.SELECT_PUSH)
-
-    # 5. BOTH DOWN
-    if ActionType.SELECT_BOTH_DOWN in actions:
-        return Action(ActionType.SELECT_BOTH_DOWN)
-
-    # 6. USE REROLL to avoid attacker down unless a one-die block
-    if ActionType.USE_REROLL in actions and dice > 1:
-        return Action(ActionType.USE_REROLL)
-
-    # 7. ATTACKER DOWN
-    if ActionType.SELECT_ATTACKER_DOWN in actions:
-        return Action(ActionType.SELECT_ATTACKER_DOWN)
-
-
-#def if_select_player: 
-#    action_type_available( ActionType.SELECT_PLAYER, game)
-
         
 def main():
-    
-    FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
-    FFAIEnv.add_scripted_behavior(is_block_dice, block )
-    
-    
-    FFAIEnv.add_scripted_behavior(if_kick_receive, choose_receive )
-    FFAIEnv.remove_actiontype(ActionType.RECEIVE)
-    FFAIEnv.remove_actiontype(ActionType.KICK)
-    
-    
-    actions_removed = [
-        ActionType.PLACE_BALL,
-        #ActionType.PUSH,
-        #ActionType.FOLLOW_UP,
-        #ActionType.MOVE,
-        #ActionType.BLOCK,
-        ActionType.PASS,
-        ActionType.FOUL,
-        ActionType.HANDOFF,
-        ActionType.LEAP,
-        ActionType.STAB,
-        #ActionType.SELECT_PLAYER,
-        #ActionType.START_MOVE,
-        #ActionType.START_BLOCK,
-        #ActionType.START_BLITZ,
-        #ActionType.START_PASS,
-        #ActionType.START_FOUL,
-        #ActionType.START_HANDOFF,
-        ActionType.SELECT_ATTACKER_DOWN,
-        ActionType.SELECT_BOTH_DOWN,
-        ActionType.SELECT_PUSH,
-        ActionType.SELECT_DEFENDER_STUMBLES,
-        ActionType.SELECT_DEFENDER_DOWN,
-    ]
-    for a in actions_removed: 
-        FFAIEnv.remove_actiontype(a)
-    
+    if True: #GbgBot config 
+        academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
+        
+        # FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
+        # FFAIEnv.add_scripted_behavior(is_block_dice, block )
+        
+        # FFAIEnv.add_scripted_behavior(if_kick_receive, choose_receive )
+        
+        actions_removed = [
+            ActionType.PLACE_BALL,
+            # ActionType.PUSH,
+            # ActionType.FOLLOW_UP,
+            # ActionType.MOVE,
+            # ActionType.BLOCK,
+            # ActionType.PASS,
+            ActionType.FOUL,
+            # ActionType.HANDOFF,
+            ActionType.LEAP,
+            ActionType.STAB,
+            # ActionType.SELECT_PLAYER,
+            # ActionType.START_MOVE,
+            # ActionType.START_BLOCK,
+            # ActionType.START_BLITZ,
+            # ActionType.START_PASS,
+            ActionType.START_FOUL,
+            # ActionType.START_HANDOFF,
+            ActionType.SELECT_ATTACKER_DOWN,
+            ActionType.SELECT_BOTH_DOWN,
+            ActionType.SELECT_PUSH,
+            ActionType.SELECT_DEFENDER_STUMBLES,
+            ActionType.SELECT_DEFENDER_DOWN,
+            ActionType.RECEIVE, 
+            ActionType.KICK
+        ]
+        # for a in actions_removed: 
+            # FFAIEnv.remove_actiontype(a)
+        
+        lectures = academy.get_next_lectures( num_processes )
+        
     es = [make_env(i) for i in range(num_processes)]
-    
-    #print(FFAIEnv.scripted_behavior)
-    
     envs = VecEnv([es[i] for i in range(num_processes)])
 
     spatial_obs_space = es[0].observation_space.spaces['board'].shape
@@ -581,7 +699,7 @@ def main():
         pass
 
     # MODEL
-    ac_agent = CNNPolicy(spatial_obs_space, non_spatial_obs_space, hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=action_space)
+    ac_agent = CNNPolicy(spatial_obs_space, non_spatial_obs_space, hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=action_space, spatial_action_types = num_spatial_action_types, non_spat_actions=num_non_spatial_action_types)
 
     # OPTIMIZER
     optimizer = optim.RMSprop(ac_agent.parameters(), learning_rate)
@@ -594,35 +712,35 @@ def main():
     dif_delta = 0.01
 
     # Reset environments
-    obs = envs.reset(difficulty)
+    obs = envs.reset(difficulty, lectures)
     spatial_obs, non_spatial_obs = update_obs(obs)
 
     # Add obs to memory
     memory.spatial_obs[0].copy_(spatial_obs)
     memory.non_spatial_obs[0].copy_(non_spatial_obs)
 
-    # Variables for storing stats
-    all_updates = 0
-    all_episodes = 0
-    all_steps = 0
-    episodes = 0
-    proc_rewards = np.zeros(num_processes)
-    proc_tds = np.zeros(num_processes)
-    proc_tds_opp = np.zeros(num_processes)
-    episode_rewards = []
-    episode_tds = []
-    episode_tds_opp = []
-    wins = []
-    value_losses = []
-    policy_losses = []
-    log_updates = []
-    log_episode = []
-    log_steps = []
-    log_win_rate = []
-    log_td_rate = []
-    log_td_rate_opp = []
-    log_mean_reward = []
-    log_difficulty = []
+    if True: # Variables for storing stats
+        all_updates = 0
+        all_episodes = 0
+        all_steps = 0
+        episodes = 0
+        proc_rewards = np.zeros(num_processes)
+        proc_tds = np.zeros(num_processes)
+        proc_tds_opp = np.zeros(num_processes)
+        episode_rewards = []
+        episode_tds = []
+        episode_tds_opp = []
+        wins = []
+        #value_losses = []
+        #policy_losses = []
+        log_updates = []
+        log_episode = []
+        log_steps = []
+        log_win_rate = []
+        log_td_rate = []
+        log_td_rate_opp = []
+        log_mean_reward = []
+        log_difficulty = []
 
     # self-play
     selfplay_next_save = selfplay_save_steps
@@ -634,20 +752,10 @@ def main():
         envs.swap(A2CAgent(name=f"selfplay-0", env_name=env_name, filename=model_path))
         selfplay_models += 1
 
-    renderer = ffai.Renderer()
-
-    academy = gc.Academy( [gc.Scoring()] )
-    
-    
-    # ### remove this 
-    
-    value, action = ac_agent( spatial_obs, non_spatial_obs )
-    
-    exit() 
-    # ### end remove 
-    
     while all_steps < num_steps:
-
+        
+        lectures = academy.get_next_lectures( num_processes )
+        
         for step in range(steps_per_update):
 
             action_masks = compute_action_masks(obs)
@@ -669,7 +777,6 @@ def main():
                 }
                 action_objects.append(action_object)
 
-            lectures = [ academy.get_next_lecture() for _ in range(num_processes) ]
             
             obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty,lectures=lectures)
             
@@ -791,6 +898,12 @@ def main():
             with open(log_filename, "a") as myfile:
                 myfile.write(log_to_file)
 
+                
+        if all_updates % log_interval == 0: 
+            with open("Gbg_log.txt", "a+") as f: 
+                f.write( academy.report_training() )
+            print("logged")
+        
         # Logging
         if all_updates % log_interval == 0 and len(episode_rewards) >= num_processes:
             td_rate = np.mean(episode_tds)
@@ -822,8 +935,8 @@ def main():
             print(log)
 
             episodes = 0
-            value_losses.clear()
-            policy_losses.clear()
+            #value_losses.clear()
+            #policy_losses.clear()
 
             # Save model
             torch.save(ac_agent, "models/" + model_name)
@@ -865,7 +978,6 @@ def main():
     torch.save(ac_agent, "models/" + model_name)
     envs.close()
 
-
 def update_obs(observations):
     """
     Takes the observation returned by the environment and transforms it to an numpy array that contains all of
@@ -895,7 +1007,6 @@ def update_obs(observations):
         non_spatial_obs.append(non_spatial_ob)
 
     return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
-
 
 def make_env(worker_id):
     print("Initializing worker", worker_id, "...")

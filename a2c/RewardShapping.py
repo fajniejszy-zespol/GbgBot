@@ -2,10 +2,6 @@
 import ffai.ai.pathfinding as pf
 import pdb
 import ffai
-
-
-
-	
 	
 class RewardCalculation: 
 	def __init__(self, game, team): 
