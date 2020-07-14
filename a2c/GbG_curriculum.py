@@ -225,9 +225,8 @@ class Lecture:
         
         try: 
             self._reset_lecture(game)
-        except e: 
+        except: 
             print("Lec: {} on lvl={}, threw error:".format(self.name,self.get_level() ))
-            print(e)
             self.exceptions_thrown += 1 
     
     def _reset_lecture(self, game): raise "not implemented"
@@ -237,6 +236,8 @@ class Lecture:
 class Academy: 
     
     def __init__(self, lectures): 
+        self.actual_matches = 2
+        
         self.lectures       = {} 
         for l in lectures: 
             self.lectures[l.name] = l 
@@ -261,7 +262,7 @@ class Academy:
     def get_next_lectures(self, nn):
         #TODO: modify distribution according to progress 
         self.lec_prob = np.zeros( (self.len_lects,) )
-        self.lec_prob += +(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1)) - self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
+        self.lec_prob += +4*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1)) - 3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
         
         
         
@@ -276,8 +277,8 @@ class Academy:
         
         self.lec_prob = softmax( self.lec_prob) 
         
-        names = np.random.choice( self.lect_names, nn-4, p = self.lec_prob) 
-        return [self.lectures[name] for name in names] + [None, None, None, None] 
+        names = np.random.choice( self.lect_names, nn-self.actual_matches, p = self.lec_prob) 
+        return [self.lectures[name] for name in names] + [None]*self.actual_matches  
         
         
     def log_training(self, name, outcome): 
@@ -322,8 +323,8 @@ class Academy:
             max_lvl     = str( l.max_level )
             avg         = self.latest_hundred[lec_index,:].mean() 
             prob        = self.lec_prob[lec_index]
-            
-            s_log = "{}, ep={}, diff(max)={:.3f} ({:.3f}), lvl=({}/{}), avg={:.2f}, p={:.2f}".format(name, episodes, diff, max_diff, lvl, max_lvl, avg, prob )
+            exceptions  = l.exceptions_thrown
+            s_log = "{}, ep={}, diff(max)={:.3f} ({:.3f}), lvl=({}/{}), avg={:.2f}, p={:.2f}, e={}".format(name, episodes, diff, max_diff, lvl, max_lvl, avg, prob,exceptions )
             s += s_log + "\n"
         return s
             

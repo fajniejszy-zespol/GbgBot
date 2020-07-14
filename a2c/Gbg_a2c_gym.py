@@ -21,32 +21,33 @@ from Gbg_bot_functions import *
 import GbG_curriculum as gc
 
 # Training configuration
-num_steps = 10000000
+#num_steps = 10000000
 num_processes = 8
-steps_per_update = 30
 learning_rate = 0.001 #0.001
 gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
 max_grad_norm = 0.05
-log_interval = 50
-save_interval = 500  
-ppcg = False
+reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Environment
 
 env_name = "FFAI-5-v2"
 #env_name = "FFAI-v2"
 
-num_steps = 10000000 
+num_steps = 10000000
+steps_per_update = 30
+
 log_interval = 10
 save_interval = 1000
-reset_steps = 20000  # The environment is reset after this many steps it gets stuck
+
+
+ppcg = False
 
 # Self-play
 selfplay = True  # Use this to enable/disable self-play
 selfplay_window = 1
-selfplay_save_steps = int(num_steps / 10)
+selfplay_save_steps = int(num_steps / 100)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
@@ -55,7 +56,6 @@ num_cnn_kernels = [32, 32]
 
 model_name = env_name
 log_filename = "logs/" + model_name + ".dat"
-
 
 def ensure_dir(file_path):
     directory = os.path.dirname(file_path)
@@ -185,6 +185,7 @@ class CNNPolicy(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        print("parameters reset")
         relu_gain = nn.init.calculate_gain('relu')
         
         self.conv1.weight.data.mul_(relu_gain)
@@ -633,7 +634,7 @@ def main():
         lectures = academy.get_next_lectures( num_processes )
         
     es = [make_env(i) for i in range(num_processes)]
-    envs = VecEnv([es[i] for i in range(num_processes)])
+    
 
     spatial_obs_space = es[0].observation_space.spaces['board'].shape
     board_dim = (spatial_obs_space[1], spatial_obs_space[2])
@@ -698,9 +699,22 @@ def main():
     except OSError:
         pass
 
+    try: 
+        os.remove("logs/Gbg_log.txt")
+    except OSError:
+        pass    
     # MODEL
-    ac_agent = CNNPolicy(spatial_obs_space, non_spatial_obs_space, hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=action_space, spatial_action_types = num_spatial_action_types, non_spat_actions=num_non_spatial_action_types)
-
+    try: 
+        ac_agent = torch.load("models/" + model_name)
+        print("load successful")
+    except: 
+       ac_agent = CNNPolicy(spatial_obs_space, non_spatial_obs_space, hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=action_space, spatial_action_types = num_spatial_action_types, non_spat_actions=num_non_spatial_action_types)
+       print("load failed - new agent created")
+        
+    #exit()
+    
+    envs = VecEnv([es[i] for i in range(num_processes)])
+    
     # OPTIMIZER
     optimizer = optim.RMSprop(ac_agent.parameters(), learning_rate)
 
@@ -786,9 +800,10 @@ def main():
             r = reward.numpy()
             sr = shaped_reward.numpy()
             for i in range(num_processes):
-                proc_rewards[i] += sr[i]
-                proc_tds[i] += tds_scored[i]
-                proc_tds_opp[i] += tds_opp_scored[i]
+                if lectures[i] == None:  
+                    proc_rewards[i] += sr[i]
+                    proc_tds[i] += tds_scored[i]
+                    proc_tds_opp[i] += tds_opp_scored[i]
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
@@ -796,22 +811,26 @@ def main():
             episodes += num_processes - int(dones.sum().item())
             for i in range(num_processes):
                 if done[i]:
-                    if r[i] > 0:
-                        wins.append(1)
-                        difficulty += dif_delta
-                    elif r[i] < 0:
-                        wins.append(0)
-                        difficulty -= dif_delta
-                    else:
-                        wins.append(0.5)
-                        difficulty -= dif_delta
-                    if ppcg:
-                        difficulty = min(1.0, max(0, difficulty))
-                    else:
-                        difficulty = 1
                     if "lecture" in info[i].keys(): 
                         academy.log_training( info[i]["lecture"], info[i]["lecture_outcome"])
+                        proc_rewards[i] = 0
+                        proc_tds[i] = 0
+                        proc_tds_opp[i] = 0
                     else: 
+                        if r[i] > 0:
+                            wins.append(1)
+                            difficulty += dif_delta
+                        elif r[i] < 0:
+                            wins.append(0)
+                            difficulty -= dif_delta
+                        else:
+                            wins.append(0.5)
+                            difficulty -= dif_delta
+                        if ppcg:
+                            difficulty = min(1.0, max(0, difficulty))
+                        else:
+                            difficulty = 1
+                        
                         episode_rewards.append(proc_rewards[i])
                         episode_tds.append(proc_tds[i])
                         episode_tds_opp.append(proc_tds_opp[i])
@@ -826,7 +845,7 @@ def main():
             memory.insert(step, spatial_obs, non_spatial_obs,
                           actions.data, values.data, shaped_reward, masks, action_masks)
 
-        print( academy.report_training() )
+        #print( academy.report_training() )
         
         next_value = ac_agent(Variable(memory.spatial_obs[-1], requires_grad=False), Variable(memory.non_spatial_obs[-1], requires_grad=False))[0].data
 
@@ -898,14 +917,25 @@ def main():
             with open(log_filename, "a") as myfile:
                 myfile.write(log_to_file)
 
-                
+                  
+        
         if all_updates % log_interval == 0: 
-            with open("Gbg_log.txt", "a+") as f: 
-                f.write( academy.report_training() )
-            print("logged")
+            gbg_log = academy.report_training()
+            with open("logs/Gbg_log.txt", "a+") as f: 
+                f.write( gbg_log )
+            
+            
+            # Save model
+            torch.save(ac_agent, "models/" + model_name)
+            print("Gbg logged at step={}/{}".format(all_steps, num_steps )) 
+            
+            print(gbg_log + "\n Model saved!") 
+            
         
         # Logging
         if all_updates % log_interval == 0 and len(episode_rewards) >= num_processes:
+            
+            
             td_rate = np.mean(episode_tds)
             td_rate_opp = np.mean(episode_tds_opp)
             episode_tds.clear()
@@ -938,8 +968,6 @@ def main():
             #value_losses.clear()
             #policy_losses.clear()
 
-            # Save model
-            torch.save(ac_agent, "models/" + model_name)
             
             # plot
             n = 3
