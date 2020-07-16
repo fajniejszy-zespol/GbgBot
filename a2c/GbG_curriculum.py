@@ -1,6 +1,6 @@
 import ffai
 from ffai.core.model import Square, Action
-from ffai.core.table import ActionType 
+from ffai.core.table import ActionType, Skill 
 import random 
 from random import randint 
 from pdb import set_trace
@@ -126,7 +126,6 @@ def move_player_out_of_square(game, player, x, y, asdf):
     xx = x if isinstance(x, Iterable) else (x,x)
     yy = y if isinstance(y, Iterable) else (y,y)
     
-    
     x_min = xx[0]
     x_max = xx[1]
     y_min = yy[0]
@@ -179,8 +178,6 @@ class Lecture:
     
     def reset_game(self, game): 
         
-
-        
         while True:  
             proc = game.get_procedure()
             if (proc.__class__.__name__ == "Turn" and 
@@ -202,32 +199,35 @@ class Lecture:
         
         #reset players to up and in the buttom wing
         y_pos = 0 #used to be 1 
+        next_x_pos = 0
         players = game.state.home_team.players + game.state.away_team.players
-        next_x_pos = 1
+        
         for player in players: 
-            if player.position is not None:
-                # Set to ready
-                player.state.reset()
-                player.state.up = True
+            if player.position is None:
+                continue 
+            assert next_x_pos < board_x_max 
                 
-                while True:  
-                    next_x_pos += 1 
-                    assert next_x_pos < board_x_max 
-                    position = ffai.core.model.Square(next_x_pos, y_pos)
-                    
-                    if game.state.pitch.board[position.y][position.x] is None:
-                        break 
-                
-                game.move(player, position) 
-        #y_pos = board_y_max -1 #used to be 2
+            # Set to ready
+            player.state.reset()
+            player.state.up = True
+            
+            position = ffai.core.model.Square(next_x_pos, y_pos)
+            game.move(player, position) 
+            
+            next_x_pos += 1 
+
+        game.set_available_actions()
+        
+        
+        self._reset_lecture(game)
         
         game.set_available_actions()
         
-        try: 
-            self._reset_lecture(game)
-        except: 
-            print("Lec: {} on lvl={}, threw error:".format(self.name,self.get_level() ))
-            self.exceptions_thrown += 1 
+        #try: 
+        #    self._reset_lecture(game)
+        #except: 
+        #    print("Lec: {} on lvl={}, threw error:".format(self.name,self.get_level() ))
+        #    self.exceptions_thrown += 1 
     
     def _reset_lecture(self, game): raise "not implemented"
     def training_done(self, game): raise "not implemented"        
@@ -240,6 +240,7 @@ class Academy:
         
         self.lectures       = {} 
         for l in lectures: 
+            assert l.name not in self.lectures.keys() 
             self.lectures[l.name] = l 
 
         self.history_size = 100    
@@ -264,8 +265,6 @@ class Academy:
         self.lec_prob = np.zeros( (self.len_lects,) )
         self.lec_prob += +4*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1)) - 3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
         
-        
-        
         for i, n in enumerate(self.lect_names): 
             lec = self.lectures[n]
             #self.lec_prob[i] += -5*abs(0.3 - lec.get_diff()) 
@@ -277,6 +276,8 @@ class Academy:
         
         self.lec_prob = softmax( self.lec_prob) 
         
+        assert len(self.lect_names) == len(self.lec_prob)
+            
         names = np.random.choice( self.lect_names, nn-self.actual_matches, p = self.lec_prob) 
         return [self.lectures[name] for name in names] + [None]*self.actual_matches  
         
@@ -444,22 +445,36 @@ class PickupAndScore(Lecture):
     def allowed_fail_rate(self): 
         return 2/6
         
-class HandoffAndScore(Lecture):    
-    def __init__(self): 
-        self.dst_mod = 5
-        self.ball_mod = 4
-        super().__init__("HandoffAndScore", self.dst_mod * self.ball_mod -1) 
+class PassAndScore(Lecture): 
+    def __init__(self, handoff = True,delta_level=0.5): 
+        self.pass_dist_mod = 4
+        self.score_dist_mod = 3
+        self.noise_mod = 3
+        
+        self.handoff = handoff
+        
+        max_level = self.pass_dist_mod * self.score_dist_mod * self.noise_mod -1
+        
+        if handoff: 
+            super().__init__("Handoff to Score", max_level,delta_level=delta_level) 
+        else:
+            super().__init__("Pass to Score", max_level, delta_level= delta_level)    
+            
     def _reset_lecture(self, game): 
         
-        assert game.is_handoff_available()
+        assert game.is_pass_available()
         # ### CONFIG ### # 
         board_x_max = len(game.state.pitch.board[0]) -2  
         board_y_max = len(game.state.pitch.board) -2
     
         #Level configuration 
+        extra_pass_dist = 1 if self.handoff else 2
+        
         level = self.get_level()        
-        dst_to_td = (level % self.dst_mod) +2 
-        ball_start = (level // self.dst_mod) % self.ball_mod 
+        noise      = (level %  self.noise_mod)
+        dist_pass  = (level // self.noise_mod) % self.pass_dist_mod + extra_pass_dist 
+        dist_to_td = (level // self.noise_mod // self.pass_dist_mod) % self.score_dist_mod +1 #1 = start in td zone
+        
         
         #get players 
         home_players = get_home_players(game)
@@ -467,36 +482,71 @@ class HandoffAndScore(Lecture):
         
         #setup scorer 
         p_score = home_players.pop() 
-        p_score_x = dst_to_td
+        p_score_x = dist_to_td
         p_score_y = randint(2, board_y_max -1 )
+        p_score.extra_skills = [] if random.random() < 0.5 else [Skill.CATCH]
         game.move(p_score, Square( p_score_x, p_score_y) )
         
         #setup passer
         p_pass  = home_players.pop() 
-        p_pass_intended_moves = max(ball_start - 1, 0)
-        p_pass.state.moves = p_pass.get_ma()  -  p_pass_intended_moves - randint(0,1)
-        p_pass_x = p_score_x + 1 + p_pass_intended_moves
-        dy_max =  1 + p_pass_intended_moves
-        p_pass_y = p_score_y + randint(-dy_max, dy_max)
-        p_pass_y = min(p_pass_y, board_y_max)
-        p_pass_y = max(p_pass_y, 1)
-        game.move(p_pass, Square( p_pass_x, p_pass_y) )
+        p_pass.extra_skills = [] if random.random() < 0.5 else [Skill.PASS]
+        
+        p_pass_x = p_score_x + dist_pass 
+        dx = abs(p_pass_x - p_score_x) 
+        move_player_within_square(game, p_pass, x=p_pass_x, y=[p_score_y-dx, p_score_y+dx], asdf="asdf" )
+        
+        #setup passer movement left 
+        p_pass.state.moves  = p_pass.get_ma() + 2 #add two to remove GFIs
+        
+        if self.handoff: 
+            if dx > 1: 
+                #make sure passer can't score but can reach scorer 
+                to_not_score= p_pass_x -1 #double gfi to score is ok. 
+                to_handoff = dx #double gfi to score is ok.
+                assert to_handoff <= to_not_score 
+                
+                p_pass.state.moves -= randint(to_handoff, to_not_score) 
+            
+        else: #PassAction  
+            if noise > 0: 
+                #make sure passer can't reach scorer: 
+                to_not_handoff = dx-2 
+                p_pass.state.moves  = p_pass.get_ma() + 2 #add two to remove GFIs 
+                p_pass.state.moves -= randint(0, to_not_handoff) 
+                
+        assert 0 <= p_pass.state.moves 
+        
         game.get_ball().move_to( p_pass.position ) 
         game.get_ball().is_carried = True 
         
-        if ball_start == 0: 
-            # Start the hand_off action 
-            a = Action(action_type=ActionType.START_HANDOFF, position = p_pass.position, player = p_pass )
+        if noise == 0: 
+            # Start the pass/handoff action 
+            
+            action_type = ActionType.START_HANDOFF if self.handoff else ActionType.START_PASS
+            a = Action(action_type=action_type, position = p_pass.position, player = p_pass )
             game.step(a)
         
-        x_min = 0
-        x_max = p_pass_x+1
-        y_min = min(p_score_y, p_pass_y)-1
-        y_max = max(p_score_y, p_pass_y)+1
-        
-        move_players_out_of_square(game, home_players+away_players, [x_min, x_max], [y_min , y_max] )
-        
-        self.turn = deepcopy(game.state.home_team.state.turn)  
+        if True: 
+            x_min = 0
+            x_max = max(p_score.position.x, p_pass.position.x)+1
+            
+            y_min = min(p_score.position.y, p_pass.position.y)-1
+            y_max = max(p_score.position.y, p_pass.position.y)+1
+            
+            if noise <= 2: 
+                p_used = 1-noise/2
+                p_down = 1-noise/2
+            else:
+                p_used = 0
+                p_down = 0
+            
+            move_players_out_of_square(game, away_players, [x_min, x_max], [y_min , y_max], p_down=p_down )
+            move_players_out_of_square(game, home_players, [x_min, x_max], [y_min , y_max], p_used=p_used, p_down=p_down )
+            
+            self.turn = deepcopy(game.state.home_team.state.turn)  
+            
+        if False: 
+            print("pass moves: {}/{}".format(p_pass.state.moves, p_pass.get_ma() ))
         
     def training_done(self, game): 
         training_complete = self.turn  !=  game.state.home_team.state.turn
@@ -504,8 +554,8 @@ class HandoffAndScore(Lecture):
         return training_complete, training_outcome
     
     def allowed_fail_rate(self): 
-        return 0 
-
+        return 2/6 
+        
 class BlockBallCarrier(Lecture): 
     def __init__(self): 
         self.challenge_level = 5
@@ -680,82 +730,82 @@ class CrowdSurf(Lecture):
     def allowed_fail_rate(self): 
         return 0 
 
-       
-# class Caging(Lecture): 
-    # def __init__(self): 
-        # self.distance_to_cage = 6
-        # self.cage_setup_level = 6
-        # super().__init__("Caging", self.distance_to_cage * self.cage_setup_level -1) 
-    
-    # def _reset_lecture(self, game): 
+if False:        
+    # class Caging(Lecture): 
+        # def __init__(self): 
+            # self.distance_to_cage = 6
+            # self.cage_setup_level = 6
+            # super().__init__("Caging", self.distance_to_cage * self.cage_setup_level -1) 
         
- #       ### CONFIG ### # 
-        # board_x_max = len(game.state.pitch.board[0]) -2  
-        # board_y_max = len(game.state.pitch.board) -2
-    
-#        Level configuration 
-        # level = self.get_level()        
-        # distance_to_cage = (level % self.distance_to_cage) +1 
-        # cage_setup_level = (level // self.distance_to_cage) % self.cage_setup_level 
-        
-#        get players 
-        # home_players = get_home_players(game)
-        
-#        setup cage 
-        # cage_x = randint(4, board_x_max -1 - distance_to_cage) 
-        # cage_y = randint(2, board_y_max -1) 
-        
-        # ps = [home_players.pop() for _ in range(4) ]
-        # game.move(ps[0], Square( cage_x+1, cage_y+1) )
-        # game.move(ps[1], Square( cage_x+1, cage_y-1) )
-        # game.move(ps[2], Square( cage_x-1, cage_y+1) )
-        # game.move(ps[3], Square( cage_x-1, cage_y-1) )
-        
-        # for i in range(4):
-            # if i >= cage_setup_level: 
-                # ps[i].state.used = True 
-        
-        # if cage_setup_level >= 5:
-            # move_player_within_square(game, ps[2], [cage_x-4, cage_y+1], [cage_x-1, cage_y+4])
-            # ps[2].state.up = False
+        # def _reset_lecture(self, game): 
             
-        # if cage_setup_level >= 6:
-            # move_player_within_square(game, ps[3], [cage_x-4, cage_y-4], [cage_x-1, cage_y-1])
-            # ps[3].state.up = False
+     #       ### CONFIG ### # 
+            # board_x_max = len(game.state.pitch.board[0]) -2  
+            # board_y_max = len(game.state.pitch.board) -2
+        
+    #        Level configuration 
+            # level = self.get_level()        
+            # distance_to_cage = (level % self.distance_to_cage) +1 
+            # cage_setup_level = (level // self.distance_to_cage) % self.cage_setup_level 
             
-        # p_carrier = home_players.pop() 
-        # move_player_within_square(game, p_carrier, [cage_x, cage_y-distance_to_cage], [cage_x+distance_to_cage, cage_y+distance_to_cage])
-        # game.get_ball().move_to( p_carrier.position ) 
-        # game.get_ball().is_carried = True 
+    #        get players 
+            # home_players = get_home_players(game)
+            
+    #        setup cage 
+            # cage_x = randint(4, board_x_max -1 - distance_to_cage) 
+            # cage_y = randint(2, board_y_max -1) 
+            
+            # ps = [home_players.pop() for _ in range(4) ]
+            # game.move(ps[0], Square( cage_x+1, cage_y+1) )
+            # game.move(ps[1], Square( cage_x+1, cage_y-1) )
+            # game.move(ps[2], Square( cage_x-1, cage_y+1) )
+            # game.move(ps[3], Square( cage_x-1, cage_y-1) )
+            
+            # for i in range(4):
+                # if i >= cage_setup_level: 
+                    # ps[i].state.used = True 
+            
+            # if cage_setup_level >= 5:
+                # move_player_within_square(game, ps[2], [cage_x-4, cage_y+1], [cage_x-1, cage_y+4])
+                # ps[2].state.up = False
                 
+            # if cage_setup_level >= 6:
+                # move_player_within_square(game, ps[3], [cage_x-4, cage_y-4], [cage_x-1, cage_y-1])
+                # ps[3].state.up = False
+                
+            # p_carrier = home_players.pop() 
+            # move_player_within_square(game, p_carrier, [cage_x, cage_y-distance_to_cage], [cage_x+distance_to_cage, cage_y+distance_to_cage])
+            # game.get_ball().move_to( p_carrier.position ) 
+            # game.get_ball().is_carried = True 
+                    
+            
+            # xs = [p.position.x for p in ps].append(p_carrier.position.x)
+            # ys = [p.position.y for p in ps].append(p_carrier.position.y)
+            
+            # x_min = min(xs)
+            # x_max = max(xs)
+            # y_min = min(ys)
+            # y_max = max(ys)
+            
+            
+            # for p in home_players: 
+                # move_player_out_of_square(game, p, [x_min, y_min], [x_max, y_max])
+            
+    #        place away team on other side of pitch, of the wings
+            # for p in get_away_players(game): 
+                # move_player_out_of_square(game, p, [x_min, y_min], [x_max, y_max])        
+            
+            # self.turn = deepcopy(game.state.home_team.state.turn)  
+            
+            
+        # def training_done(self, game): 
+            # training_complete = self.turn  !=  game.state.home_team.state.turn
+            
+            # num_tackle_zones_at(self, player, position)
+            
+            # training_outcome = game.state.home_team.state.score > 0 
+            # return training_complete, training_outcome
         
-        # xs = [p.position.x for p in ps].append(p_carrier.position.x)
-        # ys = [p.position.y for p in ps].append(p_carrier.position.y)
-        
-        # x_min = min(xs)
-        # x_max = max(xs)
-        # y_min = min(ys)
-        # y_max = max(ys)
-        
-        
-        # for p in home_players: 
-            # move_player_out_of_square(game, p, [x_min, y_min], [x_max, y_max])
-        
-#        place away team on other side of pitch, of the wings
-        # for p in get_away_players(game): 
-            # move_player_out_of_square(game, p, [x_min, y_min], [x_max, y_max])        
-        
-        # self.turn = deepcopy(game.state.home_team.state.turn)  
-        
-        
-    # def training_done(self, game): 
-        # training_complete = self.turn  !=  game.state.home_team.state.turn
-        
-        # num_tackle_zones_at(self, player, position)
-        
-        # training_outcome = game.state.home_team.state.score > 0 
-        # return training_complete, training_outcome
-    
-    # def allowed_fail_rate(self): 
-        # return 0 
-
+        # def allowed_fail_rate(self): 
+            # return 0 
+    pass

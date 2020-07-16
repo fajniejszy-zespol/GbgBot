@@ -22,7 +22,6 @@ import GbG_curriculum as gc
 
 # Training configuration
 #num_steps = 10000000
-num_processes = 8
 learning_rate = 0.001 #0.001
 gamma = 0.99
 entropy_coef = 0.01
@@ -31,16 +30,15 @@ max_grad_norm = 0.05
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Environment
-
 env_name = "FFAI-5-v2"
 #env_name = "FFAI-v2"
 
+num_processes = 8
 num_steps = 10000000
 steps_per_update = 30
 
 log_interval = 10
 save_interval = 1000
-
 
 ppcg = False
 
@@ -72,10 +70,10 @@ rewards_own = {
     OutcomeType.TOUCHDOWN:          2,
     
     #Ball handling 
-    OutcomeType.CATCH:              0.1,
+    OutcomeType.CATCH:              0.0,
     OutcomeType.INTERCEPTION:       0.2,
     OutcomeType.SUCCESSFUL_PICKUP:  0.1,
-    OutcomeType.FUMBLE:            -0.5,
+    OutcomeType.FUMBLE:            -0.3,
     OutcomeType.FAILED_CATCH:      -0.1, 
     OutcomeType.INACCURATE_PASS:   -0.1,
     
@@ -85,8 +83,8 @@ rewards_own = {
     OutcomeType.STUNNED:           -0.1, 
     OutcomeType.KNOCKED_OUT:       -0.2,
     OutcomeType.CASUALTY:          -0.5,
-    OutcomeType.PUSHED_INTO_CROWD: -0.15, 
     OutcomeType.PLAYER_EJECTED:    -0.5, 
+    OutcomeType.PUSHED_INTO_CROWD: -0.25, 
     
 }
 rewards_opp = {
@@ -94,7 +92,7 @@ rewards_opp = {
     OutcomeType.TOUCHDOWN:         -2,
     
     #Ball handling 
-    OutcomeType.CATCH:             -0.1,
+    OutcomeType.CATCH:             -0.0,
     OutcomeType.INTERCEPTION:      -0.2,
     OutcomeType.SUCCESSFUL_PICKUP: -0.1,
     OutcomeType.FUMBLE:             0.5,#0.1,
@@ -107,7 +105,7 @@ rewards_opp = {
     OutcomeType.STUNNED:            0.1,
     OutcomeType.KNOCKED_OUT:        0.2,
     OutcomeType.CASUALTY:           0.5,
-    OutcomeType.PUSHED_INTO_CROWD:  0.15, 
+    OutcomeType.PUSHED_INTO_CROWD:  0.25, 
     OutcomeType.PLAYER_EJECTED:     0.5,
     
 }
@@ -595,7 +593,8 @@ class VecEnv():
         
 def main():
     if True: #GbgBot config 
-        academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
+        #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
+        academy = gc.Academy( [gc.Scoring(), gc.PassAndScore(handoff=True), gc.PassAndScore(handoff=False)] )
         
         # FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
         # FFAIEnv.add_scripted_behavior(is_block_dice, block )

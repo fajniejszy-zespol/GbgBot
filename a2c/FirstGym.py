@@ -103,60 +103,15 @@ def mrend():
 def msr(): 
     mstep()
     mrend()
-    
-def game_to_turn(env): 
-    env.reset()
-    game = env.game 
-    
-    while game.get_procedure().__class__.__name__ != "Turn": 
-        game.step( env.game._forced_action() )
-    game.step( env.game._forced_action() )
-    
-    board_x_max = len(game.state.pitch.board[0]) 
-    board_y_max = len(game.state.pitch.board)
-    
-    #reset players to up and in the buttom wing
-    y_pos = 1
-    for players in [game.state.home_team.players, game.state.away_team.players]: 
-        next_x_pos = 2
-        for player in players: 
-            if player.position is not None:
-                # Set to ready
-                player.state.reset()
-                player.state.up = True
-                
-                position = ffai.core.model.Square(next_x_pos, y_pos)
-                while game.state.pitch.board[position.y][position.x] is not None:
-                    next_x_pos += 1 
-                    if next_x_pos >= board_x_max: 
-                        print("ERRORORORORO ")
-                        exit()
-                    position = ffai.core.model.Square(next_x_pos, y_pos)
-                
-                game.move(player, position) 
-        y_pos = board_y_max -2 
 
-    #self._reset_lecture(game)
+score = gc.PassAndScore(handoff=False) 
 
-score = gc.CrowdSurf() 
-#score.level = 0
-
-#reward = RewardCalculation(env.game, team1)
-obs = env.reset(score)
-#env.render()
 
 def main():     
-    pause_me = False 
-    
-    env.render()
     prev_super_shaped = None 
-    reset = False 
+    reset = True  
     
     while True: 
-        try:
-            action = get_random_action(env)
-        except IndexError: 
-            reset = True 
         
         if reset: 
             score.increase_diff()
@@ -171,9 +126,24 @@ def main():
                 set_trace()
             continue 
             
+        try:
+            action = get_random_action(env)
+            obs, reward, done, info = env.step( action )
+            if done: 
+                reset = True 
+                continue 
+        
+        except IndexError: 
+            print("index_error")
+            reset = True
+            continue 
+        except AssertionError as err: 
+            env.render()
+            print("assertion error: {}".format(err))
+            set_trace()
+            exit() 
         
         
-        obs, reward, done, info = env.step( action )
         reward_shaped, prev_super_shaped = gbgGym.reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
             
         reset = True 
