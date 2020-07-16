@@ -506,7 +506,8 @@ def worker(remote, parent_remote, env, worker_id):
             # set_difficulty(env, dif)
             remote.send(obs)
         elif command == 'render':
-            env.render()
+            #env.render()
+            pass 
         elif command == 'swap':
             next_opp = data
         elif command == 'close':
