@@ -396,7 +396,7 @@ class Scoring(Lecture):
 
 class PickupAndScore(Lecture): 
     def __init__(self): 
-        self.dst_mod = 6
+        self.dst_mod = 5
         self.ball_mod = 4
         super().__init__("Pickup", self.dst_mod * self.ball_mod -1) 
         
@@ -408,7 +408,7 @@ class PickupAndScore(Lecture):
     
         #Level configuration 
         level = self.get_level()        
-        dst_to_td = (level % self.dst_mod) +2 
+        dst_to_td = (level % self.dst_mod) +1
         ball_start = (level // self.dst_mod) % self.ball_mod 
 
         home_players = get_home_players(game)
@@ -668,19 +668,19 @@ class CrowdSurf(Lecture):
         p_blocker = home_players.pop() 
         if challenge == 0: 
             game.move(p_blocker, Square(x, y+dy)) 
-            
-            
-            
             assists = 1
+        
         if challenge == 1: 
             game.move(p_blocker, Square(x+dx, y+dy)) 
             p2 = home_players.pop() 
             game.move(p2, Square(x-dx, y)) 
             assists = 0
+        
         elif challenge == 2: 
             move_player_within_square(game, p_blocker, [x-1, x+1], [y+1*dy, y+2*dy] ,"asdf" )
             assists = 1
             assists_p_used = 0.4
+        
         elif challenge == 3 or challenge == 4 : 
             move_player_within_square(game, p_blocker, [x-3, x+3], [y+2*dy, y+4*dy ],"asdf" )
             assists = 1
@@ -700,7 +700,7 @@ class CrowdSurf(Lecture):
         #game.get_ball().is_carried = True 
         #assert game.get_ball_carrier() in get_away_players(game) 
         
-        if challenge > 3: 
+        if challenge < 3: 
             p_used = 1
         else: 
             p_used = 0

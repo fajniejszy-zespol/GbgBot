@@ -30,12 +30,12 @@ max_grad_norm = 0.05
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Environment
-env_name = "FFAI-5-v2"
+env_name = "FFAI-v2"
 #env_name = "FFAI-v2"
 
-num_processes = 8
-num_steps = 10000000
-steps_per_update = 30
+num_processes = 4
+num_steps = 100000000
+steps_per_update = 40
 
 log_interval = 10
 save_interval = 1000
@@ -595,7 +595,14 @@ class VecEnv():
 def main():
     if True: #GbgBot config 
         #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
-        academy = gc.Academy( [gc.Scoring(), gc.PassAndScore(handoff=True), gc.PassAndScore(handoff=False)] )
+        planned_lectures = [gc.Scoring(), 
+                            gc.PassAndScore(handoff=True), 
+                            gc.PassAndScore(handoff=False), 
+                            gc.PickupAndScore(), 
+                            gc.BlockBallCarrier(),
+                            gc.CrowdSurf()
+                            ]
+        academy = gc.Academy( planned_lectures )
         
         # FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
         # FFAIEnv.add_scripted_behavior(is_block_dice, block )
