@@ -41,6 +41,44 @@ def is_block_dice(game):
                     ActionType.SELECT_DEFENDER_DOWN]
     return any( [ (bd in actions) for  bd in block_dices]) 
 
+def reward_score_threat(game, players): 
+    score_probs = [] 
+    ball_carrier = game.get_ball_carrier() 
+    for p in players: 
+        #If player up and within scoring range 
+        if p.state.up: 
+            #calculate scoring probability 
+            old_used = p.state.used
+            p.state.used = False 
+            
+            #Todo: make 
+            prob = pf.get_safest_path_to_endzone(game, p) 
+            
+            p.state.used = old_used 
+            
+            if prob is None or prob.prob <= 0: 
+                continue 
+            
+            prob = prob.prob 
+            
+            #if not holding ball, multiply catch modifiers
+            if p != ball_carrier: 
+                prob *= game.get_catch_prob(p, accurate=True)
+            
+            
+            score_probs.append(prob)
+            
+            if prob >= 4/6: 
+                break 
+            
+            
+    #score_probs.sort(reverse=True)
+    if len(score_probs)>0:
+        return max( score_probs )
+    else: 
+        return 0 
+        
+    
 def block(game): #stolen from scripted bot 
     """
     Select block die or reroll.

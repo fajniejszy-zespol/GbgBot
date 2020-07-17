@@ -235,8 +235,10 @@ class Lecture:
      
 class Academy: 
     
-    def __init__(self, lectures): 
-        self.actual_matches = 4
+    def __init__(self, lectures, match_processes=0): 
+        self.match_processes = match_processes
+        
+        
         
         self.lectures       = {} 
         for l in lectures: 
@@ -254,7 +256,7 @@ class Academy:
         self.latest_diff    = np.zeros( (self.len_lects, self.history_size) )
         self.indices        = np.zeros( (self.len_lects, ), dtype=int )
         self.episodes       = np.zeros( (self.len_lects, ), dtype=int  )
-        self.max            = np.zeros( (self.len_lects, ) )
+        self.max_acheived   = np.zeros( (self.len_lects, ) )
         
         self.max_name_len = max( [len(l.name) for l in lectures] )
         
@@ -265,21 +267,17 @@ class Academy:
             
         #self.lec_prob = np.zeros( (self.len_lects,) )
         self.lec_prob = +4*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1)) - 3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
-        
-        
-        # for i, n in enumerate(self.lect_names): 
-            # lec = self.lectures[n]
-                
-            # if lec.exceptions_thrown > 10: 
-                # self.lec_prob[i] = float('-inf')
-        
         self.lec_prob = softmax( self.lec_prob) 
         
-        assert len(self.lect_names) == len(self.lec_prob)
-            
+        nbr = nn-self.match_processes
+        nbr = max(0, nbr) 
         
-        names = np.random.choice( self.lect_names, nn-self.actual_matches, p = self.lec_prob) 
-        return [self.lectures[name] for name in names] + [None]*self.actual_matches  
+        
+        names = np.random.choice( self.lect_names, nbr, p = self.lec_prob) 
+        
+        to_return =  [None]*self.match_processes  + [self.lectures[name] for name in names]
+        
+        return to_return[:nn] #don't return more than was requested. 
         
         
     def log_training(self, name, outcome): 
@@ -294,18 +292,16 @@ class Academy:
         elif self.lectures[ name ]. allowed_fail_rate() < random.random():
             self.lectures[ name ].decrease_diff()
         
-        # unchanged difficulty  
-        else: 
-            pass 
+        # else: unchanged difficulty  
         
+        
+        #Logg result 
         self.latest_hundred[lec_index, self.indices[lec_index] ] = outcome 
         self.latest_diff[lec_index, self.indices[lec_index] ] = self.lectures[ name ].get_diff() 
-        
-        
         self.indices[lec_index] = (self.indices[lec_index]+1) % self.history_size
         self.episodes[lec_index] += 1 
         
-        self.max[lec_index] = max( self.max[lec_index], self.lectures[name].get_diff() )
+        self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[name].get_level() * outcome )
         
         
     def report_training(self, filename=None): 
@@ -321,14 +317,16 @@ class Academy:
             
             name        = l.name + " "*extra_spaces
             episodes    = self.episodes[lec_index]
-            diff        =  l.get_diff()
-            max_diff    = self.max[lec_index] 
+            #diff        =  l.get_diff()
+            #max_diff    = self.max[lec_index] 
             lvl         = str( l.get_level() )
-            max_lvl     = str( l.max_level )
+            max_acheived= self.max_acheived[lec_index]
+            max_lvl     = l.max_level
             avg         = self.latest_hundred[lec_index,:].mean() 
             prob        = self.lec_prob[lec_index]
-            exceptions  = l.exceptions_thrown
-            s_log = "{}, ep={}, diff(max)={:.3f} ({:.3f}), lvl=({}/{}), avg={:.2f}, p={:.2f}, e={}".format(name, episodes, diff, max_diff, lvl, max_lvl, avg, prob,exceptions )
+            #exceptions  = l.exceptions_thrown
+            
+            s_log = "{}, ep={:.0f}, lvl = {} ({:.0f})/{:.0f}, avg={:.2f}, p={:.2f}".format(name, episodes, lvl, max_acheived, max_lvl, avg, prob )
             s += s_log + "\n"
         return s
             
@@ -454,7 +452,7 @@ class PickupAndScore(Lecture):
         return 2/6
         
 class PassAndScore(Lecture): 
-    def __init__(self, handoff = True,delta_level=0.5): 
+    def __init__(self, handoff = True,delta_level=0.1): 
         self.pass_dist_mod = 4
         self.score_dist_mod = 3
         self.noise_mod = 3

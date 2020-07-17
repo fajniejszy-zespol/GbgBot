@@ -3,7 +3,7 @@ import gym
 from ffai import FFAIEnv
 from torch.autograd import Variable
 import torch.optim as optim
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe 
 from ffai.ai.layers import *
 import ffai.ai.pathfinding as pf 
 import torch
@@ -30,22 +30,23 @@ max_grad_norm = 0.05
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Environment
-#env_name = "FFAI-5-v2"
+#env_name = "FFAI-7-v2"
 env_name = "FFAI-v2"
 
-num_processes = 8
+num_processes = 12
+match_processes = 9
 num_steps = 100000000
-steps_per_update = 40
+steps_per_update = 80
 
-log_interval = 10
+log_interval = 15
 save_interval = 1000
 
 ppcg = False
 
 # Self-play
 selfplay = True  # Use this to enable/disable self-play
-selfplay_window = 1
-selfplay_save_steps = int(num_steps / 100)
+selfplay_window = 4
+selfplay_save_steps = 100000 #int(num_steps / 100)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
@@ -264,43 +265,7 @@ class CNNPolicy(nn.Module):
         return values, action_probs
 
 
-def reward_score_threat(game, players): 
-    score_probs = [] 
-    ball_carrier = game.get_ball_carrier() 
-    for p in players: 
-        #If player up and within scoring range 
-        if p.state.up: 
-            #calculate scoring probability 
-            old_used = p.state.used
-            p.state.used = False 
-            
-            #Todo: make 
-            prob = pf.get_safest_path_to_endzone(game, p) 
-            
-            p.state.used = old_used 
-            
-            if prob is None or prob.prob <= 0: 
-                continue 
-            
-            prob = prob.prob 
-            
-            #if not holding ball, multiply catch modifiers
-            if p != ball_carrier: 
-                prob *= game.get_catch_prob(p, accurate=True)
-            
-            
-            score_probs.append(prob)
-            
-            if prob >= 4/6: 
-                break 
-            
-            
-    #score_probs.sort(reverse=True)
-    if len(score_probs)>0:
-        return max( score_probs )
-    else: 
-        return 0 
-        
+    
 def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, debug=False ):
     r = 0
     for outcome in env.get_outcomes():
@@ -408,11 +373,12 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
         
         # Reward screening 
         if True: 
+            screening_reward = 0.3
             
             away_ps = gc.get_away_players(env.game)
             home_players = gc.get_home_players(env.game)
             if env.game.get_ball_carrier() in home_players or len(away_ps)==0: 
-                unmarked_tz_reward = 1 #Give max if screen is not needed. 
+                unmarked_tz_reward = screening_reward #Give max if screen is not needed. 
                 
             else: 
                 #Only consider relevant tacklezones between ball and own td 
@@ -432,11 +398,11 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
                 weight_mask[ away_mean_y:] = weight[: len(weight_mask[ away_mean_y:]) ] 
                 
                 #REWARD - Screening with unmarked tacklezones 
-                unmarked_tz_reward = np.dot( covered_lanes, weight_mask ) 
+                unmarked_tz_reward = np.dot( covered_lanes, weight_mask )  
                 
                 normalization = np.ones( covered_lanes.shape) 
                 unmarked_tz_reward /= np.dot( normalization, weight_mask ) 
-                
+                unmarked_tz_reward *= screening_reward
                 if debug: print("unmarked single tz screen: {}".format( unmarked_tz_reward ) ) 
             
             
@@ -602,7 +568,7 @@ def main():
                             gc.BlockBallCarrier(),
                             gc.CrowdSurf()
                             ]
-        academy = gc.Academy( planned_lectures )
+        academy = gc.Academy( planned_lectures , match_processes=match_processes )
         
         # FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
         # FFAIEnv.add_scripted_behavior(is_block_dice, block )
