@@ -236,7 +236,7 @@ class Lecture:
 class Academy: 
     
     def __init__(self, lectures): 
-        self.actual_matches = 2
+        self.actual_matches = 4
         
         self.lectures       = {} 
         for l in lectures: 
@@ -262,22 +262,22 @@ class Academy:
         
     def get_next_lectures(self, nn):
         #TODO: modify distribution according to progress 
-        self.lec_prob = np.zeros( (self.len_lects,) )
-        self.lec_prob += +4*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1)) - 3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
+            
+        #self.lec_prob = np.zeros( (self.len_lects,) )
+        self.lec_prob = +4*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1)) - 3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
         
-        for i, n in enumerate(self.lect_names): 
-            lec = self.lectures[n]
-            #self.lec_prob[i] += -5*abs(0.3 - lec.get_diff()) 
-            #if self.lec_prob[i] <= 0:
-            #    self.lec_prob[i] = 0.01
+        
+        # for i, n in enumerate(self.lect_names): 
+            # lec = self.lectures[n]
                 
-            if lec.exceptions_thrown > 10: 
-                self.lec_prob[i] = float('-inf')
+            # if lec.exceptions_thrown > 10: 
+                # self.lec_prob[i] = float('-inf')
         
         self.lec_prob = softmax( self.lec_prob) 
         
         assert len(self.lect_names) == len(self.lec_prob)
             
+        
         names = np.random.choice( self.lect_names, nn-self.actual_matches, p = self.lec_prob) 
         return [self.lectures[name] for name in names] + [None]*self.actual_matches  
         
@@ -299,6 +299,9 @@ class Academy:
             pass 
         
         self.latest_hundred[lec_index, self.indices[lec_index] ] = outcome 
+        self.latest_diff[lec_index, self.indices[lec_index] ] = self.lectures[ name ].get_diff() 
+        
+        
         self.indices[lec_index] = (self.indices[lec_index]+1) % self.history_size
         self.episodes[lec_index] += 1 
         
@@ -333,7 +336,7 @@ class Academy:
 # ### Lectures ### 
 class Scoring(Lecture): 
     def __init__(self): 
-        self.dst_mod = 7
+        self.dst_mod = 6
         self.obstacle_mod = 4
         super().__init__("Score", self.dst_mod*self.obstacle_mod  -1) 
         
@@ -398,7 +401,8 @@ class PickupAndScore(Lecture):
     def __init__(self): 
         self.dst_mod = 5
         self.ball_mod = 4
-        super().__init__("Pickup", self.dst_mod * self.ball_mod -1) 
+        self.noise_mod = 3
+        super().__init__("Pickup", self.dst_mod * self.ball_mod * self.noise_mod -1) 
         
     def _reset_lecture(self, game): 
 
@@ -408,9 +412,10 @@ class PickupAndScore(Lecture):
     
         #Level configuration 
         level = self.get_level()        
-        dst_to_td = (level % self.dst_mod) +1
+        dst_to_td = (level % self.dst_mod) +2
         ball_start = (level // self.dst_mod) % self.ball_mod 
-
+        noise = (level // self.dst_mod // self.ball_mod ) % self.noise_mod
+        
         home_players = get_home_players(game)
         away_players = get_away_players(game)
         
@@ -433,7 +438,10 @@ class PickupAndScore(Lecture):
         y_top    =   min( p_pos.y, ball_pos.y)-1
         y_bottom =   max( p_pos.y, ball_pos.y)+1
         
-        move_players_out_of_square(game, home_players+away_players, [x_left, x_right], [y_top, y_bottom] )
+        p_used = 1 - noise / (self.noise_mod -1)
+        
+        move_players_out_of_square(game, home_players, [x_left, x_right], [y_top, y_bottom],p_used=p_used)
+        move_players_out_of_square(game, away_players, [x_left, x_right], [y_top, y_bottom] )
         
         self.turn = deepcopy(game.state.home_team.state.turn)  
     

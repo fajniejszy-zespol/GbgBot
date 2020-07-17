@@ -30,10 +30,10 @@ max_grad_norm = 0.05
 reset_steps = 20000  # The environment is reset after this many steps it gets stuck
 
 # Environment
+#env_name = "FFAI-5-v2"
 env_name = "FFAI-v2"
-#env_name = "FFAI-v2"
 
-num_processes = 4
+num_processes = 8
 num_steps = 100000000
 steps_per_update = 40
 
@@ -815,7 +815,7 @@ def main():
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
             dones = masks.squeeze()
-            episodes += num_processes - int(dones.sum().item())
+            #episodes += num_processes - int(dones.sum().item())
             for i in range(num_processes):
                 if done[i]:
                     if "lecture" in info[i].keys(): 
@@ -824,6 +824,7 @@ def main():
                         proc_tds[i] = 0
                         proc_tds_opp[i] = 0
                     else: 
+                        episodes += 1 
                         if r[i] > 0:
                             wins.append(1)
                             difficulty += dif_delta
