@@ -5,7 +5,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 from multiprocessing import Process, Pipe 
 from ffai.ai.layers import *
-import ffai.ai.pathfinding as pf 
+#import ffai.ai.pathfinding as pf 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,7 +23,7 @@ import GbG_curriculum as gc
 # Training configuration
 #num_steps = 10000000
 learning_rate = 0.001 #0.001
-gamma = 0.99
+gamma = 0.8
 entropy_coef = 0.01
 value_loss_coef = 0.5
 max_grad_norm = 0.05
@@ -34,18 +34,18 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 env_name = "FFAI-v2"
 
 num_processes = 12
-match_processes = 9
+match_processes = 6
 num_steps = 100000000
-steps_per_update = 80
+steps_per_update = 20
 
-log_interval = 15
+log_interval = 2
 save_interval = 1000
 
 ppcg = False
 
 # Self-play
 selfplay = True  # Use this to enable/disable self-play
-selfplay_window = 4
+selfplay_window = 1
 selfplay_save_steps = 100000 #int(num_steps / 100)
 selfplay_swap_steps = selfplay_save_steps
 
@@ -53,7 +53,7 @@ selfplay_swap_steps = selfplay_save_steps
 num_hidden_nodes = 256
 num_cnn_kernels = [32, 32]
 
-model_name = env_name
+model_name = "yolo_swag" #env_name
 log_filename = "logs/" + model_name + ".dat"
 
 def ensure_dir(file_path):
@@ -358,12 +358,33 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             if debug: print("Reward - Home tz: {} - {} - {}".format(own_in_ballzone, own_tz_ballzone, own_tz_ball)   )
             
         # Reward for having two scoring threats 
-        if False: 
+        if True: 
             home_players = gc.get_home_players(env.game) 
             away_players = gc.get_away_players(env.game)
             
-            home_score_threat = reward_score_threat( env.game, home_players )
-            away_score_threat = reward_score_threat( env.game, away_players )
+            home_score_threat = 0
+            away_score_threat = 0 
+            
+            board_x_max = len(env.game.state.pitch.board[0]) -2  
+            
+            for player in home_players: 
+                moves_to_td = player.position.x  -1 
+                tz = env.game.num_tackle_zones_in(player)
+                
+                tz = 1 - max(tz,1)/2 
+                home_score_threat += ( moves_to_td <= player.get_ma() ) * tz  
+
+            for player in away_players: 
+                moves_to_td = board_x_max - player.position.x  
+                tz = env.game.num_tackle_zones_in(player)
+                
+                tz = 1 - max(tz,1)/2 
+                away_score_threat += ( moves_to_td <= player.get_ma() ) * tz  
+
+
+              
+            home_score_threat = max(home_score_threat, 2)    * 0.3
+            away_score_threat = max(home_score_threat, 2)    * 0.3
             
             
             super_shaped += home_score_threat
@@ -506,7 +527,7 @@ class VecEnv():
         cumul_dones = None
         #set_trace() 
         if lectures == None: 
-            lectures = [None for _ in range(len(self.remotes))]
+            lectures = [None] * len(self.remotes)
             
         for remote, action, lecture in zip(self.remotes, actions, lectures):
             remote.send(('step', [action, difficulty, lecture]))
@@ -568,7 +589,7 @@ def main():
                             gc.BlockBallCarrier(),
                             gc.CrowdSurf()
                             ]
-        academy = gc.Academy( planned_lectures , match_processes=match_processes )
+        academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
         
         # FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
         # FFAIEnv.add_scripted_behavior(is_block_dice, block )
@@ -741,7 +762,7 @@ def main():
 
     while all_steps < num_steps:
         
-        lectures = academy.get_next_lectures( num_processes )
+        
         
         for step in range(steps_per_update):
 
@@ -764,9 +785,8 @@ def main():
                 }
                 action_objects.append(action_object)
 
-            
+            lectures = academy.get_next_lectures( num_processes )
             obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty,lectures=lectures)
-            
             
             reward = torch.from_numpy(np.expand_dims(np.stack(env_reward), 1)).float()
             shaped_reward = torch.from_numpy(np.expand_dims(np.stack(shaped_reward), 1)).float()
@@ -779,13 +799,13 @@ def main():
                     proc_tds_opp[i] += tds_opp_scored[i]
 
             # If done then clean the history of observations.
-            masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])
+            masks = torch.FloatTensor([[0.0] if done_ or info_["reset_reward"] else [1.0] for done_, info_ in zip(done, info) ])
             dones = masks.squeeze()
             #episodes += num_processes - int(dones.sum().item())
             for i in range(num_processes):
                 if done[i]:
                     if "lecture" in info[i].keys(): 
-                        academy.log_training( info[i]["lecture"], info[i]["lecture_outcome"])
+                        academy.log_training( info[i]["lecture"])
                         proc_rewards[i] = 0
                         proc_tds[i] = 0
                         proc_tds_opp[i] = 0
@@ -996,6 +1016,7 @@ def update_obs(observations):
         '''
         spatial_ob = np.stack(obs['board'].values())
 
+        state = list(obs['state'].values())
         state = list(obs['state'].values())
         procedures = list(obs['procedures'].values())
         actions = list(obs['available-action-types'].values())

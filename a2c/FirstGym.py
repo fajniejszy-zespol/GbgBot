@@ -104,7 +104,7 @@ def msr():
     mstep()
     mrend()
 
-score = gc.PassAndScore(handoff=False) 
+score = gc.ChooseBlockDie() 
 
 
 def main():     
