@@ -11,14 +11,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import sys
-from a2c_agent import A2CAgent
+from GbgAgent import A2CAgent
 import ffai
 import random
 from pdb import set_trace
 
-from Gbg_bot_functions import * 
-
-import GbG_curriculum as gc
+import Curriculum as gc
 
 # Training configuration
 #num_steps = 10000000

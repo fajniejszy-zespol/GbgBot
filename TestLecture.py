@@ -5,13 +5,13 @@ import numpy as np
 import ffai
 from pdb import set_trace
 #from RewardShapping import RewardCalculation 
-from scripted_bot_example import MyScriptedBot
+#from scripted_bot_example import MyScriptedBot
 from ffai.core.table import *
 
 from time import sleep 
 
-import GbG_curriculum as gc
-import Gbg_a2c_gym as gbgGym
+import Curriculum as gc
+import TrainAgent as gbgGym
 
 setup_actions =set([ffai.ActionType.SETUP_FORMATION_WEDGE,
                             ffai.ActionType.SETUP_FORMATION_LINE,
@@ -82,7 +82,6 @@ arena = ffai.load_arena(config.arena)
 team1 = ffai.load_all_teams(ruleset, pitch_size)[0] 
 team2 = ffai.load_all_teams(ruleset, pitch_size)[0] 
 
-opponent_bot = MyScriptedBot('scripted')
     
 #env =  ffai.FFAIEnv(config, team1, team2, opp_actor=opponent_bot)
 env =  ffai.FFAIEnv(config, team1, team2)
