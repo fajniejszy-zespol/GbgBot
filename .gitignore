@@ -5,3 +5,4 @@ a2c/plots/*
 a2c/logs/*
 
 trained models/FFAI-5-v2_
+logs/Gbg_log.txt

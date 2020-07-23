@@ -19,14 +19,17 @@ log_filename = "logs/" + model_name + ".dat"
 
 
 class CNNPolicy(nn.Module):
-
-    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions):
+    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types, non_spat_actions):
         super(CNNPolicy, self).__init__()
 
+        
+        self.non_spat_actions = non_spat_actions
+        
         # Spatial input stream
-        self.conv1 = nn.Conv2d(spatial_shape[0], out_channels=kernels[0], kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0], out_channels=kernels[1], kernel_size=3, stride=1, padding=1)
-
+        self.conv1 = nn.Conv2d(spatial_shape[0],        out_channels=kernels[0],            kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=5, stride=1, padding=2)
+        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=spatial_action_types,  kernel_size=5, stride=1, padding=2)
+        
         # Non-spatial input stream
         self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
 
@@ -36,50 +39,72 @@ class CNNPolicy(nn.Module):
         self.linear1 = nn.Linear(stream_size, hidden_nodes)
 
         # The outputs
-        self.critic = nn.Linear(hidden_nodes, 1)
         self.actor = nn.Linear(hidden_nodes, actions)
-
+        
+        # Critic stream 
+        critic_stream_size = actions + kernels[1] * spatial_shape[1] * spatial_shape[2]
+        self.critic1 = nn.Linear(critic_stream_size, hidden_nodes)
+        self.critic2 = nn.Linear(hidden_nodes, 1)
+        
+        
+        self.train()
         self.reset_parameters()
 
     def reset_parameters(self):
+        print("parameters reset")
         relu_gain = nn.init.calculate_gain('relu')
+        
         self.conv1.weight.data.mul_(relu_gain)
         self.conv2.weight.data.mul_(relu_gain)
+        self.conv3.weight.data.mul_(relu_gain)
+        
         self.linear0.weight.data.mul_(relu_gain)
         self.linear1.weight.data.mul_(relu_gain)
         self.actor.weight.data.mul_(relu_gain)
-        self.critic.weight.data.mul_(relu_gain)
+        self.critic1.weight.data.mul_(relu_gain)
+        self.critic2.weight.data.mul_(relu_gain)
 
     def forward(self, spatial_input, non_spatial_input):
         """
         The forward functions defines how the data flows through the graph (layers)
         """
-        # Spatial input through two convolutional layers
+        # Spatial input through convolutional layers
         x1 = self.conv1(spatial_input)
         x1 = F.relu(x1)
         x1 = self.conv2(x1)
         x1 = F.relu(x1)
-
+        x_extra = self.conv3(x1)
+        
         # Concatenate the input streams
         flatten_x1 = x1.flatten(start_dim=1)
-
+        flatten_x_extra = x_extra.flatten(start_dim=1)
+        
         x2 = self.linear0(non_spatial_input)
         x2 = F.relu(x2)
-
         flatten_x2 = x2.flatten(start_dim=1)
-        concatenated = torch.cat((flatten_x1, flatten_x2), dim=1)
-
+        
+        concatenated = torch.cat( (flatten_x1, flatten_x2), dim=1)
+        
         # Fully-connected layers
         x3 = self.linear1(concatenated)
         x3 = F.relu(x3)
-        #x2 = self.linear2(x2)
-        #x2 = F.relu(x2)
-
+        
         # Output streams
-        value = self.critic(x3)
-        actor = self.actor(x3)
-
-        # return value, policy
+        index = self.non_spat_actions
+        
+        actor = self.actor(x3) 
+        actor[:,index: ] += flatten_x_extra  #Add x_extra to spatial actions 
+        
+        #Concat actor and x1 
+        x_critic_stream = torch.cat( (actor, flatten_x1), dim=1) 
+        
+        #Apply linear_critic1
+        x_critic_stream = self.critic1(x_critic_stream)
+        x_critic_stream = F.relu(x_critic_stream)
+        
+        #Apply linear_critic2 
+        value = self.critic2(x_critic_stream)
+        
         return value, actor
 
     def act(self, spatial_inputs, non_spatial_input, action_mask):
@@ -105,6 +130,39 @@ class CNNPolicy(nn.Module):
             actions[~action_mask] = float('-inf')
         action_probs = F.softmax(actions, dim=1)
         return values, action_probs
+
+        
+def update_obs(observations):
+    """
+    Takes the observation returned by the environment and transforms it to an numpy array that contains all of
+    the feature layers and non-spatial info
+    """
+    spatial_obs = []
+    non_spatial_obs = []
+
+    for obs in observations:
+        '''
+        for k, v in obs['board'].items():
+            print(k)
+            print(v)
+        '''
+        spatial_ob = np.stack(obs['board'].values())
+
+        state = list(obs['state'].values())
+        state = list(obs['state'].values())
+        procedures = list(obs['procedures'].values())
+        actions = list(obs['available-action-types'].values())
+
+        non_spatial_ob = np.stack(state+procedures+actions)
+
+        # feature_layers = np.expand_dims(feature_layers, axis=0)
+        non_spatial_ob = np.expand_dims(non_spatial_ob, axis=0)
+
+        spatial_obs.append(spatial_ob)
+        non_spatial_obs.append(non_spatial_ob)
+
+    return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
+
 
 
 class A2CAgent(Agent):
@@ -227,29 +285,7 @@ class A2CAgent(Agent):
         return spatial_action_type, spatial_x, spatial_y
 
     def _update_obs(self, observations):
-        """
-        Takes the observation returned by the environment and transforms it to an numpy array that contains all of
-        the feature layers and non-spatial info.
-        """
-        spatial_obs = []
-        non_spatial_obs = []
-
-        for obs in observations:
-            spatial_ob = np.stack(obs['board'].values())
-
-            state = list(obs['state'].values())
-            procedures = list(obs['procedures'].values())
-            actions = list(obs['available-action-types'].values())
-
-            non_spatial_ob = np.stack(state+procedures+actions)
-
-            # feature_layers = np.expand_dims(feature_layers, axis=0)
-            non_spatial_ob = np.expand_dims(non_spatial_ob, axis=0)
-
-            spatial_obs.append(spatial_ob)
-            non_spatial_obs.append(non_spatial_ob)
-
-        return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
+        return update_obs(observations)
 
     def make_env(self, env_name):
         env = gym.make(env_name)

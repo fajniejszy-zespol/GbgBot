@@ -17,6 +17,7 @@ import random
 from pdb import set_trace
 
 import Curriculum as gc
+from GbgAgent import CNNPolicy, update_obs
 
 # Training configuration
 #num_steps = 10000000
@@ -147,121 +148,6 @@ class Memory(object):
         self.returns[-1] = next_value
         for step in reversed(range(self.rewards.size(0))):
             self.returns[step] = self.returns[step + 1] * gamma * self.masks[step] + self.rewards[step]
-
-
-class CNNPolicy(nn.Module):
-    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types, non_spat_actions):
-        super(CNNPolicy, self).__init__()
-
-        
-        self.non_spat_actions = non_spat_actions
-        
-        # Spatial input stream
-        self.conv1 = nn.Conv2d(spatial_shape[0],        out_channels=kernels[0],            kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=spatial_action_types,  kernel_size=5, stride=1, padding=2)
-        
-        # Non-spatial input stream
-        self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
-
-        # Linear layers
-        stream_size = kernels[1] * spatial_shape[1] * spatial_shape[2]
-        stream_size += hidden_nodes
-        self.linear1 = nn.Linear(stream_size, hidden_nodes)
-
-        # The outputs
-        self.actor = nn.Linear(hidden_nodes, actions)
-        
-        # Critic stream 
-        critic_stream_size = actions + kernels[1] * spatial_shape[1] * spatial_shape[2]
-        self.critic1 = nn.Linear(critic_stream_size, hidden_nodes)
-        self.critic2 = nn.Linear(hidden_nodes, 1)
-        
-        
-        self.train()
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        print("parameters reset")
-        relu_gain = nn.init.calculate_gain('relu')
-        
-        self.conv1.weight.data.mul_(relu_gain)
-        self.conv2.weight.data.mul_(relu_gain)
-        self.conv3.weight.data.mul_(relu_gain)
-        
-        self.linear0.weight.data.mul_(relu_gain)
-        self.linear1.weight.data.mul_(relu_gain)
-        self.actor.weight.data.mul_(relu_gain)
-        self.critic1.weight.data.mul_(relu_gain)
-        self.critic2.weight.data.mul_(relu_gain)
-
-    def forward(self, spatial_input, non_spatial_input):
-        """
-        The forward functions defines how the data flows through the graph (layers)
-        """
-        # Spatial input through convolutional layers
-        x1 = self.conv1(spatial_input)
-        x1 = F.relu(x1)
-        x1 = self.conv2(x1)
-        x1 = F.relu(x1)
-        x_extra = self.conv3(x1)
-        
-        # Concatenate the input streams
-        flatten_x1 = x1.flatten(start_dim=1)
-        flatten_x_extra = x_extra.flatten(start_dim=1)
-        
-        x2 = self.linear0(non_spatial_input)
-        x2 = F.relu(x2)
-        flatten_x2 = x2.flatten(start_dim=1)
-        
-        concatenated = torch.cat( (flatten_x1, flatten_x2), dim=1)
-        
-        # Fully-connected layers
-        x3 = self.linear1(concatenated)
-        x3 = F.relu(x3)
-        
-        # Output streams
-        index = self.non_spat_actions
-        
-        actor = self.actor(x3) 
-        actor[:,index: ] += flatten_x_extra  #Add x_extra to spatial actions 
-        
-        #Concat actor and x1 
-        x_critic_stream = torch.cat( (actor, flatten_x1), dim=1) 
-        
-        #Apply linear_critic1
-        x_critic_stream = self.critic1(x_critic_stream)
-        x_critic_stream = F.relu(x_critic_stream)
-        
-        #Apply linear_critic2 
-        value = self.critic2(x_critic_stream)
-        
-        return value, actor
-
-    def act(self, spatial_inputs, non_spatial_input, action_mask):
-        values, action_probs = self.get_action_probs(spatial_inputs, non_spatial_input, action_mask=action_mask)
-        actions = action_probs.multinomial(1)
-        return values, actions
-
-    def evaluate_actions(self, spatial_inputs, non_spatial_input, actions, actions_mask):
-        value, policy = self(spatial_inputs, non_spatial_input)
-        actions_mask = actions_mask.view(-1, 1, actions_mask.shape[2]).squeeze().bool()
-        policy[~actions_mask] = float('-inf')
-        log_probs = F.log_softmax(policy, dim=1)
-        probs = F.softmax(policy, dim=1)
-        action_log_probs = log_probs.gather(1, actions)
-        log_probs = torch.where(log_probs[None, :] == float('-inf'), torch.tensor(0.), log_probs)
-        dist_entropy = -(log_probs * probs).sum(-1).mean()
-        return action_log_probs, value, dist_entropy
-
-    def get_action_probs(self, spatial_input, non_spatial_input, action_mask):
-        values, actions = self(spatial_input, non_spatial_input)
-        # Masking step: Inspired by: http://juditacs.github.io/2018/12/27/masked-attention.html
-        if action_mask is not None:
-            actions[~action_mask] = float('-inf')
-        action_probs = F.softmax(actions, dim=1)
-        return values, action_probs
-
 
     
 def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, debug=False ):
@@ -758,6 +644,7 @@ def main():
         envs.swap(A2CAgent(name=f"selfplay-0", env_name=env_name, filename=model_path))
         selfplay_models += 1
 
+    print("Training started!")
     while all_steps < num_steps:
         
         
@@ -998,36 +885,6 @@ def main():
     torch.save(ac_agent, "models/" + model_name)
     envs.close()
 
-def update_obs(observations):
-    """
-    Takes the observation returned by the environment and transforms it to an numpy array that contains all of
-    the feature layers and non-spatial info
-    """
-    spatial_obs = []
-    non_spatial_obs = []
-
-    for obs in observations:
-        '''
-        for k, v in obs['board'].items():
-            print(k)
-            print(v)
-        '''
-        spatial_ob = np.stack(obs['board'].values())
-
-        state = list(obs['state'].values())
-        state = list(obs['state'].values())
-        procedures = list(obs['procedures'].values())
-        actions = list(obs['available-action-types'].values())
-
-        non_spatial_ob = np.stack(state+procedures+actions)
-
-        # feature_layers = np.expand_dims(feature_layers, axis=0)
-        non_spatial_ob = np.expand_dims(non_spatial_ob, axis=0)
-
-        spatial_obs.append(spatial_ob)
-        non_spatial_obs.append(non_spatial_ob)
-
-    return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
 
 def make_env(worker_id):
     print("Initializing worker", worker_id, "...")

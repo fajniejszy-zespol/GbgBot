@@ -7,7 +7,7 @@ from pdb import set_trace
 from copy import deepcopy 
 from collections import Iterable
 import numpy as np 
-import ffai.ai.pathfinding as pf 
+#import ffai.ai.pathfinding as pf 
 
 
 from scipy.special import softmax
@@ -934,7 +934,7 @@ class ChooseBlockDie(Lecture):
     def allowed_fail_rate(self): 
         return 0 
     
-        
+    #game.get_next_team    
  
 if False:        
     # class Caging(Lecture): 
