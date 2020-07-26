@@ -11,6 +11,8 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import sys
 
+from pytest import set_trace 
+
 # Architecture
 model_name = 'FFAI-v2'
 env_name = 'FFAI-v2'
@@ -21,28 +23,26 @@ log_filename = "logs/" + model_name + ".dat"
 class CNNPolicy(nn.Module):
     def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types, non_spat_actions):
         super(CNNPolicy, self).__init__()
-
-        
-        self.non_spat_actions = non_spat_actions
         
         # Spatial input stream
         self.conv1 = nn.Conv2d(spatial_shape[0],        out_channels=kernels[0],            kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=spatial_action_types,  kernel_size=5, stride=1, padding=2)
+        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=kernels[2],            kernel_size=5, stride=1, padding=2)
+        self.conv4 = nn.Conv2d(in_channels=kernels[2],  out_channels=spatial_action_types,  kernel_size=5, stride=1, padding=2)
         
         # Non-spatial input stream
         self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
 
         # Linear layers
-        stream_size = kernels[1] * spatial_shape[1] * spatial_shape[2]
+        stream_size = kernels[2] * spatial_shape[1] * spatial_shape[2]
         stream_size += hidden_nodes
         self.linear1 = nn.Linear(stream_size, hidden_nodes)
 
         # The outputs
-        self.actor = nn.Linear(hidden_nodes, actions)
+        self.non_spat_actor = nn.Linear(hidden_nodes, non_spat_actions) 
         
         # Critic stream 
-        critic_stream_size = actions + kernels[1] * spatial_shape[1] * spatial_shape[2]
+        critic_stream_size = actions + stream_size 
         self.critic1 = nn.Linear(critic_stream_size, hidden_nodes)
         self.critic2 = nn.Linear(hidden_nodes, 1)
         
@@ -57,10 +57,11 @@ class CNNPolicy(nn.Module):
         self.conv1.weight.data.mul_(relu_gain)
         self.conv2.weight.data.mul_(relu_gain)
         self.conv3.weight.data.mul_(relu_gain)
+        self.conv4.weight.data.mul_(relu_gain)
         
         self.linear0.weight.data.mul_(relu_gain)
         self.linear1.weight.data.mul_(relu_gain)
-        self.actor.weight.data.mul_(relu_gain)
+        self.non_spat_actor.weight.data.mul_(relu_gain)
         self.critic1.weight.data.mul_(relu_gain)
         self.critic2.weight.data.mul_(relu_gain)
 
@@ -69,40 +70,35 @@ class CNNPolicy(nn.Module):
         The forward functions defines how the data flows through the graph (layers)
         """
         # Spatial input through convolutional layers
-        x1 = self.conv1(spatial_input)
-        x1 = F.relu(x1)
-        x1 = self.conv2(x1)
-        x1 = F.relu(x1)
-        x_extra = self.conv3(x1)
+        x1 = F.relu(self.conv1(spatial_input))
+        x1 = F.relu(self.conv2(x1))
+        x1 = F.relu(self.conv3(x1))
         
-        # Concatenate the input streams
-        flatten_x1 = x1.flatten(start_dim=1)
-        flatten_x_extra = x_extra.flatten(start_dim=1)
+        spat_actions = self.conv4(x1)
+        spat_actions = spat_actions.flatten(start_dim=1)
         
+        #Non spatial input
         x2 = self.linear0(non_spatial_input)
         x2 = F.relu(x2)
-        flatten_x2 = x2.flatten(start_dim=1)
         
+        # Concatenate the input streams for non spat actions 
+        flatten_x1 = x1.flatten(start_dim=1)
+        flatten_x2 = x2.flatten(start_dim=1)
         concatenated = torch.cat( (flatten_x1, flatten_x2), dim=1)
         
         # Fully-connected layers
         x3 = self.linear1(concatenated)
         x3 = F.relu(x3)
+        no_spat_actions = self.non_spat_actor(x3) 
         
-        # Output streams
-        index = self.non_spat_actions
+        # Output actions         
+        actor = torch.cat( (no_spat_actions, spat_actions) , dim=1) 
         
-        actor = self.actor(x3) 
-        actor[:,index: ] += flatten_x_extra  #Add x_extra to spatial actions 
+        #Calculate the critic
+        x_critic_stream = torch.cat( (actor, concatenated), dim=1) 
         
-        #Concat actor and x1 
-        x_critic_stream = torch.cat( (actor, flatten_x1), dim=1) 
-        
-        #Apply linear_critic1
         x_critic_stream = self.critic1(x_critic_stream)
         x_critic_stream = F.relu(x_critic_stream)
-        
-        #Apply linear_critic2 
         value = self.critic2(x_critic_stream)
         
         return value, actor
@@ -149,12 +145,13 @@ def update_obs(observations):
         spatial_ob = np.stack(obs['board'].values())
 
         state = list(obs['state'].values())
-        state = list(obs['state'].values())
         procedures = list(obs['procedures'].values())
         actions = list(obs['available-action-types'].values())
+        
 
+        #set_trace() 
         non_spatial_ob = np.stack(state+procedures+actions)
-
+        
         # feature_layers = np.expand_dims(feature_layers, axis=0)
         non_spatial_ob = np.expand_dims(non_spatial_ob, axis=0)
 

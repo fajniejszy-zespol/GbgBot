@@ -1,6 +1,7 @@
 import ffai
-from ffai.core.model import Square, Action
+from ffai.core.model import Square, Action, Agent 
 from ffai.core.table import ActionType, Skill 
+import ffai.core.procedure as FFAI_procs
 import random 
 from random import randint 
 from pdb import set_trace
@@ -8,7 +9,8 @@ from copy import deepcopy
 from collections import Iterable
 import numpy as np 
 #import ffai.ai.pathfinding as pf 
-
+import scripted_bot 
+from ffai.ai.bots.random_bot import RandomBot
 
 from scipy.special import softmax
 
@@ -177,7 +179,7 @@ class Lecture:
         self.max_level      = max_level
         self.delta_level    = delta_level
         self.exceptions_thrown = 0
-    
+        
     
     def increase_diff(self): 
         self.level = min( self.max_level, self.level +self.delta_level )
@@ -187,6 +189,12 @@ class Lecture:
         return min(self.level, self.max_level) / self.max_level 
     def get_level(self): 
         return min( int(self.level), self.max_level) 
+    
+    def get_opp_actor(self): 
+        return None 
+    
+    def lec_reset_required(self): 
+        return True 
     
     def reset_game(self, game): 
         
@@ -234,16 +242,12 @@ class Lecture:
         self._reset_lecture(game)
         
         game.set_available_actions()
-        
-        #try: 
-        #    self._reset_lecture(game)
-        #except: 
-        #    print("Lec: {} on lvl={}, threw error:".format(self.name,self.get_level() ))
-        #    self.exceptions_thrown += 1 
     
     def _reset_lecture(self, game): raise "not implemented"
     def training_done(self, game): raise "not implemented"        
-    def allowed_fail_rate(self): raise "not implemented" 
+    def allowed_fail_rate(self): return 0 
+    def is_full_game_lect(self): return False  
+    
      
 class Academy: 
     
@@ -254,14 +258,20 @@ class Academy:
         assert  match_processes <= nbr_of_processes
         assert nbr_of_processes > 0 
         
-        self.lectures       = {} 
-        for l in lectures: 
-            assert l.name not in self.lectures.keys() 
-            self.lectures[l.name] = l 
-
+        self.lectures       = lectures  
+        self.match_lectures = [] 
+        
+        self.lect_names = [l.name for l in lectures]
+        
+        for l in self.lectures: 
+            assert self.lect_names.count(l.name) == 1 
+            if l.is_full_game_lect(): 
+                self.match_lectures.append(l)
+                
+        self.match_lec_index = [self.lectures.index(l) for l in self.match_lectures]    
+            
         self.history_size = 100    
             
-        self.lect_names = [l.name for l in lectures]
         
         self.len_lects = len(self.lectures) 
         
@@ -277,12 +287,12 @@ class Academy:
         self.only_matches = (nbr_of_processes == match_processes)
         
         if match_processes <= 0:
-            self.match_lectures = 0 
+            self.nbr_match_processes = 0 
         else: 
-            self.match_lectures = int(self.len_lects *(nbr_of_processes/match_processes -1)) 
+            self.nbr_match_processes = int(self.len_lects *(nbr_of_processes/match_processes -1)) 
         
-        self.lec_prob = -2* np.ones( (self.len_lects + self.match_lectures,) )  
-        self.lecture_pool = self.lect_names + [None] * self.match_lectures 
+        self.lec_prob = -2* np.ones( (self.len_lects + self.nbr_match_processes,) )  
+        self.lecture_pool = self.lectures + [None] * self.nbr_match_processes 
         
         self._update_probs() 
     
@@ -295,6 +305,8 @@ class Academy:
         finished_term   =  -3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
         
         self.lec_prob[ :self.len_lects ] = diff_term + finished_term 
+        self.lec_prob[ self.match_lec_index ] = float("-inf")
+        
         self.lec_prob_soft = softmax( self.lec_prob) 
         
         
@@ -302,8 +314,9 @@ class Academy:
         if self.only_matches: 
             return [None]*nn 
         
-        names = np.random.choice( self.lecture_pool, nn, p = self.lec_prob_soft) 
-        return [self.lectures[name] if name is not None else None for name in names]
+        lectures = np.random.choice( self.lecture_pool, nn-len(self.match_lectures), p = self.lec_prob_soft) 
+        
+        return self.match_lectures + list(lectures) 
         
     def log_training(self, data): 
         
@@ -314,23 +327,23 @@ class Academy:
         lec_index = self.lect_names.index( name )
         
         # increase difficulty 
-        if outcome == True and self.lectures[ name ].get_level() <= level: 
-            self.lectures[ name ].increase_diff() 
+        if outcome == True and self.lectures[ lec_index ].get_level() <= level: 
+            self.lectures[ lec_index ].increase_diff() 
         
         # decrease difficulty
-        elif self.lectures[ name ]. allowed_fail_rate() < random.random():
-            self.lectures[ name ].decrease_diff()
+        elif self.lectures[ lec_index ]. allowed_fail_rate() < random.random():
+            self.lectures[ lec_index ].decrease_diff()
         
         # else: unchanged difficulty  
         
         
         #Logg result 
         self.latest_hundred[lec_index, self.indices[lec_index] ] = outcome 
-        self.latest_diff[lec_index, self.indices[lec_index] ] = self.lectures[ name ].get_diff() 
+        self.latest_diff[lec_index, self.indices[lec_index] ] = self.lectures[ lec_index ].get_diff() 
         self.indices[lec_index] = (self.indices[lec_index]+1) % self.history_size
         self.episodes[lec_index] += 1 
         
-        self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[name].get_level() * outcome )
+        self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[lec_index].get_level() * outcome )
         
         self._update_probs() 
         
@@ -339,7 +352,7 @@ class Academy:
         
         
         s=""
-        for l in self.lectures.values(): 
+        for l in self.lectures: 
             lec_index = self.lect_names.index( l.name )
             
             extra_spaces = self.max_name_len - len(l.name)
@@ -853,6 +866,46 @@ class PreventScore(Lecture):
         return 0
         
 class ChooseBlockDie(Lecture): 
+    # class BlockBot(Agent):
+        # def __init__(self): 
+            # super().__init__("BlockBot")
+            
+        # def new_game(self, game, team):
+            # self.my_team = team
+        
+        # def end_game(self, game):
+            # pass
+
+        # def act(self, game):
+            # proc = game.get_procedure()
+            
+            # if isinstance(proc, FFAI_procs.Turn): 
+                # for attacker in self.my_team.players:
+                    # if attacker.position is not None and not attacker.state.used and attacker.state.up:
+                        # for defender in game.get_adjacent_opponents(attacker, down=False):
+                            
+                            # if game.num_block_dice_at( attacker, defender, attacker.position)<0: 
+                                # self.defender = defender 
+                                # set_trace() 
+                                # aaa = Action(ActionType.START_BLOCK, player=attacker)
+                                # if not game._is_action_allowed(aaa): 
+                                    # set_trace() 
+                                    # print("action not allowed")
+                                # return aaa
+                
+                
+                # return game._forced_action() 
+                
+            
+            # if isinstance(proc, FFAI_procs.Block):
+                # set_trace() 
+                # print("should get here!! ")
+                # return Action(ActionType.BLOCK, position=self.defender.position)
+            
+             
+            # return game._forced_action() 
+    
+    
     action_types = [    ActionType.SELECT_ATTACKER_DOWN,
                         ActionType.SELECT_BOTH_DOWN,
                         ActionType.SELECT_PUSH,
@@ -860,10 +913,16 @@ class ChooseBlockDie(Lecture):
                         ActionType.SELECT_DEFENDER_DOWN]
     
     def __init__(self): 
-        self.challenge_level = 5
+        self.opp_skills = [ [], [Skill.BLOCK], [Skill.DODGE]]  
+        self.own_skills = [ [Skill.BLOCK], [] ]  
         
+        self.dice_mod = 3
+        self.opp_skills_mod = len(self.opp_skills)
+        self.own_skills_mod = len(self.own_skills)
+        
+                              
         #self.obstacle_mod = 4
-        super().__init__("Choose Die", self.challenge_level  -1, delta_level=0.05) 
+        super().__init__("Choose Die", self.dice_mod * self.opp_skills_mod * self.own_skills_mod  -1, delta_level=0.05) 
     
     def _reset_lecture(self, game): 
         # ### CONFIG ### # 
@@ -872,70 +931,120 @@ class ChooseBlockDie(Lecture):
     
         #Level configuration 
         level = self.get_level()        
-        challenge = (level % self.challenge_level) 
+        self.dices    =  3-(level % self.dice_mod) 
+        blocker_skill =    (level // self.dice_mod) % self.own_skills_mod 
+        victim_skill  =    (level // self.dice_mod // self.own_skills_mod)  % self.opp_skills_mod 
+                
+        blocker_team    = get_home_players(game)
+        victim_team     = get_away_players(game) 
         
-        home_players = get_home_players(game)
-        away_players = get_away_players(game) 
-        
-        game.state.home_team.state.rerolls = 0 
-        
-        victim = away_players.pop() 
-        move_player_within_square(game, victim, x = [1,board_x_max], y = [1, board_y_max] )
+        victim = victim_team.pop() 
+        move_player_within_square(game, victim, x = [2,board_x_max-1], y = [2, board_y_max-1] )
         x = victim.position.x
         y = victim.position.y
         
-        blocker = home_players.pop() 
+        blocker = blocker_team.pop() 
         move_player_within_square(game, blocker, x = [x-1,x+1], y = [y-1, y+1])
         
+        
+        #Setup skills
+        if random.random() < 0.8: 
+            blocker.extra_skills = self.own_skills[blocker_skill]
+        if random.random() < 0.8: 
+            victim.extra_skills = self.opp_skills[victim_skill]
+        
         #setup assists if needed for two die 
-        assists  = victim.get_st() - blocker.get_st() +1 
-
-        for _ in range(assists): 
-            move_player_within_square(game, home_players.pop(), x = [x-1,x+1], y = [y-1, y+1])
-            
+        target_str = victim.get_st()  + 1 + victim.get_st()*(self.dices==3)
+        blocker_assists  = target_str - blocker.get_st() 
+        for _ in range(blocker_assists): 
+            move_player_within_square(game, blocker_team.pop(), x = [x-1,x+1], y = [y-1, y+1])
         
         #Setup rest of players: 
-        move_players_out_of_square(game, home_players+away_players, [x-4, x+4], [y-4, y+4])
+        move_players_out_of_square(game, victim_team+blocker_team, [x-4, x+4], [y-4, y+4])
         
         #Randomly place ball 
         ball_pos = Square( randint(1,board_x_max), randint(1,board_y_max)) 
         game.get_ball().move_to( ball_pos ) 
         game.get_ball().is_carried = game.get_player_at(ball_pos) is not None  
-        
-        
-        game.set_available_actions() 
-        
+                     
+        game.set_available_actions()
         a = Action(action_type=ActionType.START_BLOCK, position = blocker.position, player = blocker )
         game.step(a)
         a = Action(action_type=ActionType.BLOCK, position = victim.position, player = victim)
         game.step(a)
-        
+            
         self.actions = [a.action_type for a in game.get_available_actions() ] 
         
         assert True in [a in self.actions for a in ChooseBlockDie.action_types]
-       
+           
         self.victim = victim
         self.blocker = blocker 
         
+#    def get_opp_actor(self): 
+#        return ChooseBlockDie.BlockBot()
+    
     def training_done(self, game): 
         
         
         actions = [a.action_type for a in game.get_available_actions() ] 
         
         training_complete = True not in [a in actions for a in ChooseBlockDie.action_types] 
-        training_outcome = False 
         
-        if training_complete: 
-            training_outcome = True 
-            assert False 
+        training_outcome = (not self.victim.state.up) and self.blocker.state.up 
         
         return training_complete, training_outcome
     
     def allowed_fail_rate(self): 
-        return 0 
+        
+        # if ActionType.SELECT_DEFENDER_DOWN in self.actions: 
+            # return 0 
+        
+        # elif ActionType.SELECT_DEFENDER_STUMBLES in self.actions: 
+            # return 0
+            
+        # elif ActionType.SELECT_BOTH_DOWN and (not self.victim.has_skill(Skill.BLOCK) ) and self.blocker.has_skill(Skill.BLOCK): 
+            # return 0 
+            
+        # else: 
+            # return 1 
+        level = self.get_level()        
+        self.dices    =  3-(level % self.dice_mod) 
+        
+        if self.dices == 1: 
+            return 0.5
+        elif self.dices == 2: 
+            return 0.25
+        else: #self.dices == 3: 
+            return 0
+        
+class PlayAgentLecture(Lecture): 
+    def __init__(self,name, agent): 
+        super().__init__(name, 10)
+        self.agent = agent 
+    def get_opp_actor(self): 
+        return self.agent 
+    def lec_reset_required(self): 
+        return False 
+    def training_done(self, game): 
+        return  game.state.game_over, (game.state.away_team.state.score <= game.state.home_team.state.score) 
+    def is_full_game_lect(self): return True 
     
-    #game.get_next_team    
- 
+    
+    
+class PlayScriptedBot(PlayAgentLecture): 
+    def __init__(self): 
+        super().__init__("Scripted bot", ffai.make_bot('scripted'))
+
+class PlayRandomBot(PlayAgentLecture): 
+    def __init__(self): 
+        super().__init__("Random bot", RandomBot("Random"))
+
+        
+        
+    
+        
+    
+    
 if False:        
     # class Caging(Lecture): 
         # def __init__(self): 

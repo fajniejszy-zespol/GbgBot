@@ -103,9 +103,9 @@ def msr():
     mstep()
     mrend()
 
-score = gc.ChooseBlockDie() 
+score = gc.PlayScriptedBot() 
 
-
+score.level = 2 
 def main():     
     prev_super_shaped = None 
     reset = True  
@@ -136,16 +136,21 @@ def main():
             print("index_error")
             reset = True
             continue 
-        except AssertionError as err: 
-            env.render()
-            print("assertion error: {}".format(err))
-            set_trace()
-            exit() 
-        
-        
-        reward_shaped, prev_super_shaped = gbgGym.reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
             
-        reset = True 
+            
+        env.render()     
+        if input()=="x": 
+            set_trace()    
+        # except AssertionError as err: 
+            # env.render()
+            # print("assertion error: {}".format(err))
+            # set_trace()
+            # exit() 
+        
+        
+        #reward_shaped, prev_super_shaped = gbgGym.reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
+            
+        #reset = True 
         
 if __name__ == "__main__":
     main() 

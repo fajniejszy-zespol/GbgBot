@@ -34,23 +34,23 @@ env_name = "FFAI-v2"
 
 num_processes = 12
 match_processes = 6
-num_steps = 100000000
-steps_per_update = 20
+num_steps = 10000000
+steps_per_update = 60
 
-log_interval = 2
+log_interval = 80
 save_interval = 1000
 
 ppcg = False
 
 # Self-play
 selfplay = True  # Use this to enable/disable self-play
-selfplay_window = 1
-selfplay_save_steps = 100000 #int(num_steps / 100)
+selfplay_window = 8
+selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
-num_hidden_nodes = 256
-num_cnn_kernels = [32, 32]
+num_hidden_nodes = 512
+num_cnn_kernels = [48, 32, 24]
 
 model_name = "yolo_swag" #env_name
 log_filename = "logs/" + model_name + ".dat"
@@ -68,6 +68,7 @@ ensure_dir("plots/")
 rewards_own = {
     #Scoring 
     OutcomeType.TOUCHDOWN:          2,
+    OutcomeType.REROLL_USED:        -0.05, #to discourage unnecessary re-rolling 
     
     #Ball handling 
     OutcomeType.CATCH:              0.0,
@@ -76,7 +77,6 @@ rewards_own = {
     OutcomeType.FUMBLE:            -0.3,
     OutcomeType.FAILED_CATCH:      -0.1, 
     OutcomeType.INACCURATE_PASS:   -0.1,
-    
     
     #Fighting 
     OutcomeType.KNOCKED_DOWN:      -0.1, #always reported when knocked down. Add Stun/KO/cas after
@@ -468,10 +468,13 @@ def main():
         #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
         planned_lectures = [gc.Scoring(), 
                             gc.PassAndScore(handoff=True), 
-                            gc.PassAndScore(handoff=False), 
+                            #gc.PassAndScore(handoff=False), 
                             gc.PickupAndScore(), 
                             gc.BlockBallCarrier(),
-                            gc.CrowdSurf()
+                            gc.CrowdSurf(), 
+                            gc.PreventScore(),
+                            gc.ChooseBlockDie(), 
+                            gc.PlayRandomBot()
                             ]
         academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
         
@@ -607,6 +610,7 @@ def main():
     obs = envs.reset(difficulty, lectures)
     spatial_obs, non_spatial_obs = update_obs(obs)
 
+     
     # Add obs to memory
     memory.spatial_obs[0].copy_(spatial_obs)
     memory.non_spatial_obs[0].copy_(non_spatial_obs)
