@@ -32,8 +32,8 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 #env_name = "FFAI-7-v2"
 env_name = "FFAI-v2"
 
-num_processes = 12
-match_processes = 6
+num_processes = 3
+match_processes = 1
 num_steps = 10000000
 steps_per_update = 60
 
@@ -43,7 +43,7 @@ save_interval = 1000
 ppcg = False
 
 # Self-play
-selfplay = True  # Use this to enable/disable self-play
+selfplay = True   # Use this to enable/disable self-play
 selfplay_window = 8
 selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
@@ -331,7 +331,11 @@ def worker(remote, parent_remote, env, worker_id):
     prev_super_shaped = None
     
     while True:
+
+        print(f"worker {worker_id} - stuck on receive")
+                        
         command, data = remote.recv()
+        print(f"worker {worker_id} - after receive: '{command}'")
         if command == 'step':
             steps += 1
             action, dif, lecture = data[0], data[1], data[2]
@@ -340,6 +344,7 @@ def worker(remote, parent_remote, env, worker_id):
            # s = "in worker, action is " + str(action)
             #print(s) 
             
+
             obs, reward, done, info = env.step(action)
             tds_scored = info['touchdowns'] - tds
             tds = info['touchdowns']
@@ -365,7 +370,11 @@ def worker(remote, parent_remote, env, worker_id):
                 steps = 0
                 tds = 0
                 tds_opp = 0
+            
+            print(f"worker {worker_id} - stuck on send") 
             remote.send((obs, reward, reward_shaped, tds_scored, tds_opp_scored, done, info))
+            print(f"worker {worker_id}  - stuck somewhere else")
+
         elif command == 'reset':
             dif, lecture = data[0], data[1]
             steps = 0
@@ -412,10 +421,15 @@ class VecEnv():
         #set_trace() 
         if lectures == None: 
             lectures = [None] * len(self.remotes)
-            
+        
+        print("VecEnv - Stuck on Send") 
         for remote, action, lecture in zip(self.remotes, actions, lectures):
             remote.send(('step', [action, difficulty, lecture]))
+
+        print("VecEnv - Stuck on Receive") 
         results = [remote.recv() for remote in self.remotes]
+        print("VecEnv - Stuck on Somewhere else") 
+
         obs, rews, rews_shaped, tds, tds_opp, dones, infos = zip(*results)
         if cumul_rewards is None:
             cumul_rewards = np.stack(rews)
@@ -469,48 +483,14 @@ def main():
         planned_lectures = [gc.Scoring(), 
                             gc.PassAndScore(handoff=True), 
                             #gc.PassAndScore(handoff=False), 
-                            gc.PickupAndScore(), 
-                            gc.BlockBallCarrier(),
-                            gc.CrowdSurf(), 
-                            gc.PreventScore(),
-                            gc.ChooseBlockDie(), 
-                            gc.PlayRandomBot()
+                            gc.PickupAndScore()
+                            #gc.BlockBallCarrier(),
+                            #gc.CrowdSurf(), 
+                            #gc.PreventScore(),
+                            #gc.ChooseBlockDie(), 
+                            #gc.PlayRandomBot()
                             ]
         academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
-        
-        # FFAIEnv.add_scripted_behavior(if_place_ball, choose_place_ball_middle )
-        # FFAIEnv.add_scripted_behavior(is_block_dice, block )
-        
-        # FFAIEnv.add_scripted_behavior(if_kick_receive, choose_receive )
-        
-        actions_removed = [
-            ActionType.PLACE_BALL,
-            # ActionType.PUSH,
-            # ActionType.FOLLOW_UP,
-            # ActionType.MOVE,
-            # ActionType.BLOCK,
-            # ActionType.PASS,
-            ActionType.FOUL,
-            # ActionType.HANDOFF,
-            ActionType.LEAP,
-            ActionType.STAB,
-            # ActionType.SELECT_PLAYER,
-            # ActionType.START_MOVE,
-            # ActionType.START_BLOCK,
-            # ActionType.START_BLITZ,
-            # ActionType.START_PASS,
-            ActionType.START_FOUL,
-            # ActionType.START_HANDOFF,
-            ActionType.SELECT_ATTACKER_DOWN,
-            ActionType.SELECT_BOTH_DOWN,
-            ActionType.SELECT_PUSH,
-            ActionType.SELECT_DEFENDER_STUMBLES,
-            ActionType.SELECT_DEFENDER_DOWN,
-            ActionType.RECEIVE, 
-            ActionType.KICK
-        ]
-        # for a in actions_removed: 
-            # FFAIEnv.remove_actiontype(a)
         
         lectures = academy.get_next_lectures( num_processes )
         
@@ -675,7 +655,10 @@ def main():
                 action_objects.append(action_object)
 
             lectures = academy.get_next_lectures( num_processes )
+            lectures = [None] * num_processes 
             obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty,lectures=lectures)
+            
+            print(f"Step - {all_steps + step}" ) 
             
             reward = torch.from_numpy(np.expand_dims(np.stack(env_reward), 1)).float()
             shaped_reward = torch.from_numpy(np.expand_dims(np.stack(shaped_reward), 1)).float()
