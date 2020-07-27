@@ -32,12 +32,12 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 #env_name = "FFAI-7-v2"
 env_name = "FFAI-v2"
 
-num_processes = 3
+num_processes = 2
 match_processes = 1
 num_steps = 10000000
-steps_per_update = 60
+steps_per_update = 6
 
-log_interval = 80
+log_interval = 8
 save_interval = 1000
 
 ppcg = False
@@ -335,10 +335,13 @@ def worker(remote, parent_remote, env, worker_id):
         print(f"worker {worker_id} - stuck on receive")
                         
         command, data = remote.recv()
-        print(f"worker {worker_id} - after receive: '{command}'")
         if command == 'step':
             steps += 1
             action, dif, lecture = data[0], data[1], data[2]
+                
+            
+            lect_name = "None" if env.lecture is None else env.lecture.name 
+            print(f"worker {worker_id} - stuck on step - lect = {lect_name}, action = {action['action-type']}")
             
             
            # s = "in worker, action is " + str(action)
@@ -346,6 +349,8 @@ def worker(remote, parent_remote, env, worker_id):
             
 
             obs, reward, done, info = env.step(action)
+            print(f"worker {worker_id} - stuck on somewhere else")
+            
             tds_scored = info['touchdowns'] - tds
             tds = info['touchdowns']
             tds_opp_scored = info['opp_touchdowns'] - tds_opp
@@ -373,7 +378,7 @@ def worker(remote, parent_remote, env, worker_id):
             
             print(f"worker {worker_id} - stuck on send") 
             remote.send((obs, reward, reward_shaped, tds_scored, tds_opp_scored, done, info))
-            print(f"worker {worker_id}  - stuck somewhere else")
+            print(f"worker {worker_id}  - stuck in loop")
 
         elif command == 'reset':
             dif, lecture = data[0], data[1]
@@ -493,7 +498,8 @@ def main():
         academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
         
         lectures = academy.get_next_lectures( num_processes )
-        
+         
+        lectures = [None] * num_processes 
     es = [make_env(i) for i in range(num_processes)]
     
 
