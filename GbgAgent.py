@@ -31,11 +31,11 @@ class CNNPolicy(nn.Module):
         self.conv4 = nn.Conv2d(in_channels=kernels[2],  out_channels=spatial_action_types,  kernel_size=5, stride=1, padding=2)
         
         # Non-spatial input stream
-        self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
+        self.linear0 = nn.Linear(non_spatial_inputs, non_spatial_inputs*2)
 
         # Linear layers
         stream_size = kernels[2] * spatial_shape[1] * spatial_shape[2]
-        stream_size += hidden_nodes
+        stream_size += non_spatial_inputs*2
         self.linear1 = nn.Linear(stream_size, hidden_nodes)
 
         # The outputs
