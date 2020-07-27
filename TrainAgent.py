@@ -52,7 +52,7 @@ selfplay_swap_steps = selfplay_save_steps
 num_hidden_nodes = 512
 num_cnn_kernels = [48, 32, 24]
 
-model_name = "yolo_swag" #env_name
+model_name = env_name
 log_filename = "logs/" + model_name + ".dat"
 
 def ensure_dir(file_path):
