@@ -301,8 +301,8 @@ class Academy:
         if self.only_matches: 
             return 
         
-        diff_term       =  4*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1))
-        finished_term   =  -3*self.latest_hundred.mean(axis=1) *self.latest_diff.mean() 
+        diff_term       =  5*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1))
+        finished_term   =  -3*self.latest_diff.mean() #*self.latest_hundred.mean(axis=1)  
         
         self.lec_prob[ :self.len_lects ] = diff_term + finished_term 
         self.lec_prob[ self.match_lec_index ] = float("-inf")
@@ -377,7 +377,7 @@ class Academy:
 # ### Lectures ### 
 class Scoring(Lecture): 
     def __init__(self): 
-        self.dst_mod = 6
+        self.dst_mod = 9
         self.obstacle_mod = 4
         super().__init__("Score", self.dst_mod*self.obstacle_mod  -1) 
         
@@ -397,7 +397,11 @@ class Scoring(Lecture):
         
         #setup ball carrier
         p_carrier = home_players.pop() 
-        move_player_within_square(game, p_carrier, dst_to_td, [2, board_y_max-2], give_ball=True)
+        move_player_within_square(game, p_carrier, dst_to_td, [1, board_y_max], give_ball=True)
+        
+        extra_ma = (p_carrier.position.x - 1) - p_carrier.get_ma() -1 
+        p_carrier.extra_ma = max(min(extra_ma, 2), 0) 
+        
         
         if obstacle_level > 0: 
             #Place it so a dodge is needed when dst_to_td is low. 
@@ -406,7 +410,7 @@ class Scoring(Lecture):
             y =  p_carrier.position.y
             
             if x < 4: 
-                #Force dodge
+                #Force dodge or blitz 
                 dx = obstacle_level - 2 
                 move_player_within_square(game, p_obstacle, [x-dx, x+1], [y-1, y+1])
             else:     
@@ -439,7 +443,9 @@ class PickupAndScore(Lecture):
         self.dst_mod = 5
         self.ball_mod = 4
         self.noise_mod = 3
-        super().__init__("Pickup", self.dst_mod * self.ball_mod * self.noise_mod -1) 
+        self.marked_ball_mod = 3
+        
+        super().__init__("Pickup", self.dst_mod * self.ball_mod * self.noise_mod * self.marked_ball_mod -1) 
         
     def _reset_lecture(self, game): 
 
@@ -449,9 +455,10 @@ class PickupAndScore(Lecture):
     
         #Level configuration 
         level = self.get_level()        
-        dst_to_td = (level % self.dst_mod) +2
-        ball_start = (level // self.dst_mod) % self.ball_mod 
-        noise = (level // self.dst_mod // self.ball_mod ) % self.noise_mod
+        dst_to_td =     (level % self.dst_mod) +2
+        ball_start =    (level // self.dst_mod) % self.ball_mod 
+        noise =         (level // self.dst_mod // self.ball_mod ) % self.noise_mod
+        marked_ball =   (level // self.dst_mod // self.ball_mod  // self.noise_mod) % self.marked_ball_mod 
         
         home_players = get_home_players(game)
         away_players = get_away_players(game)
@@ -468,6 +475,12 @@ class PickupAndScore(Lecture):
             scatter_ball(game, ball_start , p_carrier.position)
         ball_pos = game.get_ball().position 
         p_pos = p_carrier.position 
+        
+        #Mark the ball
+        x=ball_pos.x 
+        y=ball_pos.y 
+        p_down = 1 - noise / (self.noise_mod -1)
+        move_player_within_square(game, away_players.pop(), x=[ x-1, x+1], y=[y-1, y+1], p_down = p_down)   
         
         #place rest of players at random places out of the way 
         x_left   =   0
@@ -492,8 +505,8 @@ class PickupAndScore(Lecture):
         
 class PassAndScore(Lecture): 
     def __init__(self, handoff = True,delta_level=0.1): 
-        self.pass_dist_mod = 4
-        self.score_dist_mod = 3
+        self.pass_dist_mod = 6
+        self.score_dist_mod = 7
         self.noise_mod = 3
         
         self.handoff = handoff
@@ -513,7 +526,7 @@ class PassAndScore(Lecture):
         board_y_max = len(game.state.pitch.board) -2
     
         #Level configuration 
-        extra_pass_dist = 1 if self.handoff else 2
+        extra_pass_dist = 1 if self.handoff else 4
         
         level = self.get_level()        
         noise      = (level %  self.noise_mod)
@@ -534,7 +547,7 @@ class PassAndScore(Lecture):
         
         #setup passer
         p_pass  = home_players.pop() 
-        p_pass.extra_skills = [] if random.random() < 0.5 else [Skill.PASS]
+        #p_pass.extra_skills = [] if random.random() < 0.5 else [Skill.PASS] #Pass skill not implemeted
         
         p_pass_x = p_score_x + dist_pass 
         dx = abs(p_pass_x - p_score_x) 
@@ -620,11 +633,7 @@ class BlockBallCarrier(Lecture):
         
         #setup ball carrier
         p_carrier = away_players.pop() 
-        move_player_within_square(game, p_carrier, [2, board_x_max-1], [2, board_y_max-1])
-        game.get_ball().move_to( p_carrier.position ) 
-        game.get_ball().is_carried = True 
-        assert game.get_ball_carrier() in get_away_players(game) 
-        
+        move_player_within_square(game, p_carrier, [2, board_x_max-1], [2, board_y_max-1], give_ball=True)
         
         x = p_carrier.position.x
         y = p_carrier.position.y 
@@ -866,46 +875,6 @@ class PreventScore(Lecture):
         return 0
         
 class ChooseBlockDie(Lecture): 
-    # class BlockBot(Agent):
-        # def __init__(self): 
-            # super().__init__("BlockBot")
-            
-        # def new_game(self, game, team):
-            # self.my_team = team
-        
-        # def end_game(self, game):
-            # pass
-
-        # def act(self, game):
-            # proc = game.get_procedure()
-            
-            # if isinstance(proc, FFAI_procs.Turn): 
-                # for attacker in self.my_team.players:
-                    # if attacker.position is not None and not attacker.state.used and attacker.state.up:
-                        # for defender in game.get_adjacent_opponents(attacker, down=False):
-                            
-                            # if game.num_block_dice_at( attacker, defender, attacker.position)<0: 
-                                # self.defender = defender 
-                                # set_trace() 
-                                # aaa = Action(ActionType.START_BLOCK, player=attacker)
-                                # if not game._is_action_allowed(aaa): 
-                                    # set_trace() 
-                                    # print("action not allowed")
-                                # return aaa
-                
-                
-                # return game._forced_action() 
-                
-            
-            # if isinstance(proc, FFAI_procs.Block):
-                # set_trace() 
-                # print("should get here!! ")
-                # return Action(ActionType.BLOCK, position=self.defender.position)
-            
-             
-            # return game._forced_action() 
-    
-    
     action_types = [    ActionType.SELECT_ATTACKER_DOWN,
                         ActionType.SELECT_BOTH_DOWN,
                         ActionType.SELECT_PUSH,
@@ -919,7 +888,6 @@ class ChooseBlockDie(Lecture):
         self.dice_mod = 3
         self.opp_skills_mod = len(self.opp_skills)
         self.own_skills_mod = len(self.own_skills)
-        
                               
         #self.obstacle_mod = 4
         super().__init__("Choose Die", self.dice_mod * self.opp_skills_mod * self.own_skills_mod  -1, delta_level=0.05) 
@@ -934,12 +902,12 @@ class ChooseBlockDie(Lecture):
         self.dices    =  3-(level % self.dice_mod) 
         blocker_skill =    (level // self.dice_mod) % self.own_skills_mod 
         victim_skill  =    (level // self.dice_mod // self.own_skills_mod)  % self.opp_skills_mod 
-                
+        
         blocker_team    = get_home_players(game)
         victim_team     = get_away_players(game) 
         
         victim = victim_team.pop() 
-        move_player_within_square(game, victim, x = [2,board_x_max-1], y = [2, board_y_max-1] )
+        move_player_within_square(game, victim, x = [2,board_x_max-1], y = [2, board_y_max-1], give_ball=random.random() < 0.5)
         x = victim.position.x
         y = victim.position.y
         
@@ -957,10 +925,11 @@ class ChooseBlockDie(Lecture):
         target_str = victim.get_st()  + 1 + victim.get_st()*(self.dices==3)
         blocker_assists  = target_str - blocker.get_st() 
         for _ in range(blocker_assists): 
-            move_player_within_square(game, blocker_team.pop(), x = [x-1,x+1], y = [y-1, y+1])
+            move_player_within_square(game, blocker_team.pop(), x = [x-1,x+1], y = [y-1, y+1], p_used=1)
         
         #Setup rest of players: 
-        move_players_out_of_square(game, victim_team+blocker_team, [x-4, x+4], [y-4, y+4])
+        move_players_out_of_square(game, blocker_team, [x-4, x+4], [y-4, y+4], p_used=1)
+        move_players_out_of_square(game, victim_team, [x-4, x+4], [y-4, y+4])
         
         #Randomly place ball 
         ball_pos = Square( randint(1,board_x_max), randint(1,board_y_max)) 
@@ -980,15 +949,14 @@ class ChooseBlockDie(Lecture):
         self.victim = victim
         self.blocker = blocker 
         
+        assert game.state.active_player ==  self.blocker
+        
 #    def get_opp_actor(self): 
 #        return ChooseBlockDie.BlockBot()
     
     def training_done(self, game): 
         
-        
-        actions = [a.action_type for a in game.get_available_actions() ] 
-        
-        training_complete = True not in [a in actions for a in ChooseBlockDie.action_types] 
+        training_complete = game.state.active_player != self.blocker
         
         training_outcome = (not self.victim.state.up) and self.blocker.state.up 
         

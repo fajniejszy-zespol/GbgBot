@@ -24,7 +24,7 @@ debug_thread = False
 # Training configuration
 #num_steps = 10000000
 learning_rate = 0.001 #0.001
-gamma = 0.8
+gamma = 0.95
 entropy_coef = 0.01
 value_loss_coef = 0.5
 max_grad_norm = 0.05
@@ -34,18 +34,18 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 #env_name = "FFAI-7-v2"
 env_name = "FFAI-v2"
 
-num_processes = 12
+num_processes = 10
 match_processes = 6
 num_steps = 10000000
 steps_per_update = 60
 
-log_interval = 80
+log_interval = 50 
 save_interval = 1000
 
-ppcg = False
+ppcg = True 
 
 # Self-play
-selfplay = True   # Use this to enable/disable self-play
+selfplay = False   # Use this to enable/disable self-play
 selfplay_window = 8
 selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
@@ -484,10 +484,8 @@ def main():
                             gc.PassAndScore(handoff=False), 
                             gc.PickupAndScore(), 
                             gc.BlockBallCarrier(),
-                            gc.CrowdSurf(), 
-                            gc.PreventScore(),
+                            #gc.CrowdSurf(), 
                             gc.ChooseBlockDie()
-                            #gc.PlayRandomBot()
                             ]
         academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
         
