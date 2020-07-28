@@ -24,11 +24,13 @@ class CNNPolicy(nn.Module):
     def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types, non_spat_actions):
         super(CNNPolicy, self).__init__()
         
+        
+        self.non_spat_actions = non_spat_actions 
         # Spatial input stream
         self.conv1 = nn.Conv2d(spatial_shape[0],        out_channels=kernels[0],            kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=kernels[2],            kernel_size=5, stride=1, padding=2)
-        self.conv4 = nn.Conv2d(in_channels=kernels[2],  out_channels=spatial_action_types,  kernel_size=7, stride=1, padding=3)
+        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=kernels[2],            kernel_size=3, stride=1, padding=1)
+        self.conv4 = nn.Conv2d(in_channels=kernels[2],  out_channels=spatial_action_types,  kernel_size=3, stride=1, padding=1)
         
         # Non-spatial input stream
         self.linear0 = nn.Linear(non_spatial_inputs, non_spatial_inputs*2)
@@ -39,7 +41,7 @@ class CNNPolicy(nn.Module):
         self.linear1 = nn.Linear(stream_size, hidden_nodes)
 
         # The outputs
-        self.non_spat_actor = nn.Linear(hidden_nodes, non_spat_actions) 
+        self.connected_actor = nn.Linear(hidden_nodes, actions) 
         
         # Critic stream 
         critic_stream_size = actions + stream_size 
@@ -61,7 +63,7 @@ class CNNPolicy(nn.Module):
         
         self.linear0.weight.data.mul_(relu_gain)
         self.linear1.weight.data.mul_(relu_gain)
-        self.non_spat_actor.weight.data.mul_(relu_gain)
+        self.connected_actor.weight.data.mul_(relu_gain)
         self.critic1.weight.data.mul_(relu_gain)
         self.critic2.weight.data.mul_(relu_gain)
 
@@ -89,10 +91,10 @@ class CNNPolicy(nn.Module):
         # Fully-connected layers
         x3 = self.linear1(concatenated)
         x3 = F.relu(x3)
-        no_spat_actions = self.non_spat_actor(x3) 
+        actor = self.connected_actor(x3) 
         
         # Output actions         
-        actor = torch.cat( (no_spat_actions, spat_actions) , dim=1) 
+        actor[:, self.non_spat_actions: ] += spat_actions
         
         #Calculate the critic
         x_critic_stream = torch.cat( (actor, concatenated), dim=1) 
