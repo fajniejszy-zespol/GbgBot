@@ -35,11 +35,11 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 env_name = "FFAI-v2"
 
 num_processes = 10
-match_processes = 6
+match_processes = 0
 num_steps = 10000000
-steps_per_update = 60
+steps_per_update = 40
 
-log_interval = 50 
+log_interval = 10 
 save_interval = 1000
 
 ppcg = False 
@@ -480,12 +480,12 @@ def main():
     if True: #GbgBot config 
         #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
         planned_lectures = [gc.Scoring(), 
-                            gc.PassAndScore(handoff=True), 
+                            #gc.PassAndScore(handoff=True), 
                             gc.PassAndScore(handoff=False), 
                             gc.PickupAndScore(), 
-                            gc.BlockBallCarrier(),
+                            #gc.BlockBallCarrier(),
                             #gc.CrowdSurf(), 
-                            gc.ChooseBlockDie()
+                            #gc.ChooseBlockDie()
                             ]
         academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
         
