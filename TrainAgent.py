@@ -42,7 +42,7 @@ steps_per_update = 60
 log_interval = 50 
 save_interval = 1000
 
-ppcg = True 
+ppcg = False 
 
 # Self-play
 selfplay = False   # Use this to enable/disable self-play
@@ -355,7 +355,7 @@ def worker(remote, parent_remote, env, worker_id):
             reward_shaped, prev_super_shaped = reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
             ball_carrier = env.game.get_ball_carrier()
             # PPCG
-            if dif < 1.0:
+            if dif < 1.0 and env.lecture is None:
                 if ball_carrier and ball_carrier.team == env.game.state.home_team:
                     extra_endzone_squares = int((1.0 - dif) * 25.0)
                     distance_to_endzone = ball_carrier.position.x - 1
