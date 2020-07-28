@@ -32,17 +32,29 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 # Environment
 #env_name = "FFAI-7-v2"
-env_name = "FFAI-v2"
 
-num_processes = 10
+env_name = "FFAI-v2"
+num_processes = 8
 match_processes = 0
 num_steps = 10000000
-steps_per_update = 40
+steps_per_update = 20
 
-log_interval = 10 
-save_interval = 1000
+log_interval = 50 
+save_interval = 200
+
+#Test setup 
+if False: 
+    env_name = "FFAI-7-v2"
+    num_processes = 4
+    match_processes = 0
+    num_steps = 1000000
+    steps_per_update = 20
+
+    log_interval = 5
+
 
 ppcg = False 
+
 
 # Self-play
 selfplay = False   # Use this to enable/disable self-play
@@ -51,8 +63,8 @@ selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
-num_hidden_nodes = 512
-num_cnn_kernels = [48, 32, 24]
+num_hidden_nodes = 256
+num_cnn_kernels = [32, 32, 32]
 
 model_name = env_name
 log_filename = "logs/" + model_name + ".dat"
@@ -480,12 +492,11 @@ def main():
     if True: #GbgBot config 
         #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
         planned_lectures = [gc.Scoring(), 
-                            #gc.PassAndScore(handoff=True), 
-                            gc.PassAndScore(handoff=False), 
+                            gc.PassAndScore(handoff=True), 
                             gc.PickupAndScore(), 
-                            #gc.BlockBallCarrier(),
-                            #gc.CrowdSurf(), 
-                            #gc.ChooseBlockDie()
+                            gc.BlockBallCarrier(),
+                            gc.CrowdSurf(), 
+                            gc.ChooseBlockDie()
                             ]
         academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
         
@@ -661,10 +672,10 @@ def main():
             r = reward.numpy()
             sr = shaped_reward.numpy()
             for i in range(num_processes):
-                if lectures[i] == None:  
-                    proc_rewards[i] += sr[i]
-                    proc_tds[i] += tds_scored[i]
-                    proc_tds_opp[i] += tds_opp_scored[i]
+                
+                proc_rewards[i] += sr[i]
+                proc_tds[i] += tds_scored[i]
+                proc_tds_opp[i] += tds_opp_scored[i]
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ or info_["reset_reward"] else [1.0] for done_, info_ in zip(done, info) ])
@@ -673,7 +684,7 @@ def main():
             for i in range(num_processes):
                 if done[i]:
                     if "lecture" in info[i].keys(): 
-                        academy.log_training( info[i]["lecture"])
+                        academy.log_training( info[i]["lecture"], proc_rewards[i] )
                         proc_rewards[i] = 0
                         proc_tds[i] = 0
                         proc_tds_opp[i] = 0

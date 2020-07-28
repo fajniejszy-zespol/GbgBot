@@ -270,13 +270,14 @@ class Academy:
                 
         self.match_lec_index = [self.lectures.index(l) for l in self.match_lectures]    
             
-        self.history_size = 100    
+        self.history_size = 500    
             
         
         self.len_lects = len(self.lectures) 
         
         #History variables 
         self.latest_hundred = np.zeros( (self.len_lects, self.history_size) )
+        self.rewards        = np.zeros( (self.len_lects, self.history_size) )
         self.latest_diff    = np.zeros( (self.len_lects, self.history_size) )
         self.indices        = np.zeros( (self.len_lects, ), dtype=int )
         self.episodes       = np.zeros( (self.len_lects, ), dtype=int  )
@@ -318,7 +319,7 @@ class Academy:
         
         return self.match_lectures + list(lectures) 
         
-    def log_training(self, data): 
+    def log_training(self, data, reward): 
         
         name    = data[0]
         level   = data[1]
@@ -338,9 +339,10 @@ class Academy:
         
         
         #Logg result 
-        self.latest_hundred[lec_index, self.indices[lec_index] ] = outcome 
-        self.latest_diff[lec_index, self.indices[lec_index] ] = self.lectures[ lec_index ].get_diff() 
-        self.indices[lec_index] = (self.indices[lec_index]+1) % self.history_size
+        self.rewards[lec_index, self.indices[lec_index] ]           = reward 
+        self.latest_hundred[lec_index, self.indices[lec_index] ]    = outcome 
+        self.latest_diff[lec_index, self.indices[lec_index] ]       = self.lectures[ lec_index ].get_diff() 
+        self.indices[lec_index]                                     = (self.indices[lec_index]+1) % self.history_size
         self.episodes[lec_index] += 1 
         
         self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[lec_index].get_level() * outcome )
@@ -367,9 +369,15 @@ class Academy:
             max_lvl     = l.max_level
             avg         = self.latest_hundred[lec_index,:].mean() 
             prob        = self.lec_prob_soft[lec_index]
+            reward      = self.rewards[lec_index,:].mean() 
             #exceptions  = l.exceptions_thrown
             
-            s_log = "{}, ep={:.0f}, lvl = {} ({:.0f})/{:.0f}, avg={:.2f}, p={:.2f}".format(name, episodes, lvl, max_acheived, max_lvl, avg, prob )
+            i=self.indices[lec_index]
+            reward_flattened = np.concatenate( (self.rewards[lec_index, i:], self.rewards[lec_index, :i])) 
+            reward_delta = reward_flattened[ self.history_size//2: ].mean() - reward_flattened[ :self.history_size//2 ].mean() 
+            
+            
+            s_log = "{}, ep={:.0f}, lvl= {} ({:.0f})/{:.0f}, avg={:.0f}, p={:.0f}, rewrd= {:.3f}, rewrd/dt= {:.4f}".format(name, episodes, lvl, max_acheived, max_lvl, 100*avg, 100*prob,reward,  reward_delta)
             s += s_log + "\n"
         return s
             
