@@ -334,7 +334,7 @@ class Academy:
         outcome = data[2]
         
         lec_index = self.lect_names.index( name )
-        lect = elf.lectures[ lec_index ]
+        lect = self.lectures[ lec_index ]
         
         # increase difficulty 
         if outcome == True and self.lectures[ lec_index ].get_level() <= level: 
