@@ -51,8 +51,8 @@ selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
-num_hidden_nodes = 512
-num_cnn_kernels = [48, 32, 24]
+num_hidden_nodes = 512 
+num_cnn_kernels = [48, 64]
 
 model_name = env_name
 log_filename = "logs/" + model_name + ".dat"

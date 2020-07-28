@@ -21,86 +21,67 @@ log_filename = "logs/" + model_name + ".dat"
 
 
 class CNNPolicy(nn.Module):
-    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types, non_spat_actions):
+    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions):
         super(CNNPolicy, self).__init__()
-        
+
         # Spatial input stream
-        self.conv1 = nn.Conv2d(spatial_shape[0],        out_channels=kernels[0],            kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0],  out_channels=kernels[1],            kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(in_channels=kernels[1],  out_channels=kernels[2],            kernel_size=5, stride=1, padding=2)
-        self.conv4 = nn.Conv2d(in_channels=kernels[2],  out_channels=spatial_action_types,  kernel_size=7, stride=1, padding=3)
-        
+        self.conv1 = nn.Conv2d(spatial_shape[0], out_channels=kernels[0], kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=kernels[0], out_channels=kernels[1], kernel_size=3, stride=1, padding=1)
+
         # Non-spatial input stream
-        self.linear0 = nn.Linear(non_spatial_inputs, non_spatial_inputs*2)
+        self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
 
         # Linear layers
-        stream_size = kernels[2] * spatial_shape[1] * spatial_shape[2]
-        stream_size += non_spatial_inputs*2
+        stream_size = kernels[1] * spatial_shape[1] * spatial_shape[2]
+        stream_size += hidden_nodes
         self.linear1 = nn.Linear(stream_size, hidden_nodes)
 
         # The outputs
-        self.non_spat_actor = nn.Linear(hidden_nodes, non_spat_actions) 
-        
-        # Critic stream 
-        critic_stream_size = actions + stream_size 
-        self.critic1 = nn.Linear(critic_stream_size, hidden_nodes)
-        self.critic2 = nn.Linear(hidden_nodes, 1)
-        
-        
+        self.critic = nn.Linear(hidden_nodes, 1)
+        self.actor = nn.Linear(hidden_nodes, actions)
+
         self.train()
         self.reset_parameters()
 
     def reset_parameters(self):
-        print("parameters reset")
         relu_gain = nn.init.calculate_gain('relu')
-        
         self.conv1.weight.data.mul_(relu_gain)
         self.conv2.weight.data.mul_(relu_gain)
-        self.conv3.weight.data.mul_(relu_gain)
-        self.conv4.weight.data.mul_(relu_gain)
-        
         self.linear0.weight.data.mul_(relu_gain)
         self.linear1.weight.data.mul_(relu_gain)
-        self.non_spat_actor.weight.data.mul_(relu_gain)
-        self.critic1.weight.data.mul_(relu_gain)
-        self.critic2.weight.data.mul_(relu_gain)
+        self.actor.weight.data.mul_(relu_gain)
+        self.critic.weight.data.mul_(relu_gain)
 
     def forward(self, spatial_input, non_spatial_input):
         """
         The forward functions defines how the data flows through the graph (layers)
         """
-        # Spatial input through convolutional layers
-        x1 = F.relu(self.conv1(spatial_input))
-        x1 = F.relu(self.conv2(x1))
-        x1 = F.relu(self.conv3(x1))
-        
-        spat_actions = self.conv4(x1)
-        spat_actions = spat_actions.flatten(start_dim=1)
-        
-        #Non spatial input
+        # Spatial input through two convolutional layers
+        x1 = self.conv1(spatial_input)
+        x1 = F.relu(x1)
+        x1 = self.conv2(x1)
+        x1 = F.relu(x1)
+
+        # Concatenate the input streams
+        flatten_x1 = x1.flatten(start_dim=1)
+
         x2 = self.linear0(non_spatial_input)
         x2 = F.relu(x2)
-        
-        # Concatenate the input streams for non spat actions 
-        flatten_x1 = x1.flatten(start_dim=1)
+
         flatten_x2 = x2.flatten(start_dim=1)
-        concatenated = torch.cat( (flatten_x1, flatten_x2), dim=1)
-        
+        concatenated = torch.cat((flatten_x1, flatten_x2), dim=1)
+
         # Fully-connected layers
         x3 = self.linear1(concatenated)
         x3 = F.relu(x3)
-        no_spat_actions = self.non_spat_actor(x3) 
-        
-        # Output actions         
-        actor = torch.cat( (no_spat_actions, spat_actions) , dim=1) 
-        
-        #Calculate the critic
-        x_critic_stream = torch.cat( (actor, concatenated), dim=1) 
-        
-        x_critic_stream = self.critic1(x_critic_stream)
-        x_critic_stream = F.relu(x_critic_stream)
-        value = self.critic2(x_critic_stream)
-        
+        #x2 = self.linear2(x2)
+        #x2 = F.relu(x2)
+
+        # Output streams
+        value = self.critic(x3)
+        actor = self.actor(x3)
+
+        # return value, policy
         return value, actor
 
     def act(self, spatial_inputs, non_spatial_input, action_mask):
@@ -127,7 +108,25 @@ class CNNPolicy(nn.Module):
         action_probs = F.softmax(actions, dim=1)
         return values, action_probs
 
-        
+
+def reward_function(env, info, shaped=False):
+    r = 0
+    for outcome in env.get_outcomes():
+        if not shaped and outcome.outcome_type != OutcomeType.TOUCHDOWN:
+            continue
+        team = None
+        if outcome.player is not None:
+            team = outcome.player.team
+        elif outcome.team is not None:
+            team = outcome.team
+        if team == env.own_team and outcome.outcome_type in rewards_own:
+            r += rewards_own[outcome.outcome_type]
+        if team == env.opp_team and outcome.outcome_type in rewards_opp:
+            r += rewards_opp[outcome.outcome_type]
+    if info['ball_progression'] > 0:
+        r += info['ball_progression'] * ball_progression_reward
+    return r
+
 def update_obs(observations):
     """
     Takes the observation returned by the environment and transforms it to an numpy array that contains all of
