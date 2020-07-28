@@ -180,6 +180,8 @@ class Lecture:
         self.delta_level    = delta_level
         self.exceptions_thrown = 0
         
+        assert delta_level > 0 
+        
     
     def increase_diff(self): 
         self.level = min( self.max_level, self.level +self.delta_level )
@@ -278,14 +280,16 @@ class Academy:
         #History variables 
         self.latest_hundred = np.zeros( (self.len_lects, self.history_size) )
         self.rewards        = np.zeros( (self.len_lects, self.history_size) )
-        self.latest_diff    = np.zeros( (self.len_lects, self.history_size) )
+        self.latest_level   = np.zeros( (self.len_lects, self.history_size) )
         self.indices        = np.zeros( (self.len_lects, ), dtype=int )
         self.episodes       = np.zeros( (self.len_lects, ), dtype=int  )
         self.max_acheived   = np.zeros( (self.len_lects, ) )
-        
         self.max_name_len = max( [len(l.name) for l in lectures] )
         
         self.only_matches = (nbr_of_processes == match_processes)
+        
+        self.static_max_level = np.array( [l.max_level for l in self.lectures]  )
+        
         
         if match_processes <= 0:
             self.nbr_match_processes = 0 
@@ -302,10 +306,14 @@ class Academy:
         if self.only_matches: 
             return 
         
-        diff_term       =  5*(self.latest_diff.max(axis=1) - self.latest_diff.min(axis=1))
-        finished_term   =  -3*self.latest_diff.mean() #*self.latest_hundred.mean(axis=1)  
+        levels = np.array( [l.get_level() for l in self.lectures]  )
         
-        self.lec_prob[ :self.len_lects ] = diff_term + finished_term 
+        diff_term       =   5*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
+        #finished_term   =   3*self.latest_level.mean(axis=1) #*self.latest_hundred.mean(axis=1)  
+        forgetting_term  =  3*(self.max_acheived - levels) / self.static_max_level 
+        
+        
+        self.lec_prob[ :self.len_lects ] = diff_term + forgetting_term 
         self.lec_prob[ self.match_lec_index ] = float("-inf")
         
         self.lec_prob_soft = softmax( self.lec_prob) 
@@ -326,6 +334,7 @@ class Academy:
         outcome = data[2]
         
         lec_index = self.lect_names.index( name )
+        lect = elf.lectures[ lec_index ]
         
         # increase difficulty 
         if outcome == True and self.lectures[ lec_index ].get_level() <= level: 
@@ -341,7 +350,7 @@ class Academy:
         #Logg result 
         self.rewards[lec_index, self.indices[lec_index] ]           = reward 
         self.latest_hundred[lec_index, self.indices[lec_index] ]    = outcome 
-        self.latest_diff[lec_index, self.indices[lec_index] ]       = self.lectures[ lec_index ].get_diff() 
+        self.latest_level[lec_index, self.indices[lec_index] ]      = lect.level / lect.delta_level
         self.indices[lec_index]                                     = (self.indices[lec_index]+1) % self.history_size
         self.episodes[lec_index] += 1 
         
