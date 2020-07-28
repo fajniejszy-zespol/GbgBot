@@ -35,11 +35,11 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 0
+match_processes = 4
 num_steps = 10000000
-steps_per_update = 20
+steps_per_update = 60
 
-log_interval = 50 
+log_interval = 20 
 save_interval = 200
 
 #Test setup 
