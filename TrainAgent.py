@@ -498,9 +498,9 @@ def main():
                             gc.CrowdSurf(), 
                             gc.ChooseBlockDie()
                             ]
-        academy = gc.Academy( planned_lectures , num_processes,    match_processes=match_processes )
+        academy = gc.Academy( planned_lectures , num_processes-2,    match_processes=match_processes )
         
-        lectures = academy.get_next_lectures( num_processes )
+        lectures = academy.get_next_lectures( num_processes ) + [None,None]
         
     es = [make_env(i) for i in range(num_processes)]
     
@@ -662,7 +662,7 @@ def main():
                 }
                 action_objects.append(action_object)
 
-            lectures = academy.get_next_lectures( num_processes )
+            lectures = academy.get_next_lectures( num_processes ) + [None, None]
             obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty,lectures=lectures)
             
             #print(f"Step - {all_steps + step}" ) 
