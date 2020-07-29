@@ -35,7 +35,7 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 4
+match_processes = 6
 num_steps = 10000000
 steps_per_update = 60
 
@@ -44,13 +44,13 @@ save_interval = 200
 
 #Test setup 
 if False: 
-    env_name = "FFAI-7-v2"
-    num_processes = 4
-    match_processes = 0
+    env_name = "FFAI-v2"
+    num_processes = 6
+    match_processes = 3
     num_steps = 1000000
-    steps_per_update = 20
+    steps_per_update = 10
 
-    log_interval = 5
+    log_interval = 4
 
 
 ppcg = False 
@@ -82,12 +82,15 @@ ensure_dir("plots/")
 rewards_own = {
     #Scoring 
     OutcomeType.TOUCHDOWN:          2,
+    
+    #Other 
     OutcomeType.REROLL_USED:        -0.05, #to discourage unnecessary re-rolling 
+    OutcomeType.FAILED_GFI:         -0.1, 
     
     #Ball handling 
     OutcomeType.CATCH:              0.0,
     OutcomeType.INTERCEPTION:       0.2,
-    OutcomeType.SUCCESSFUL_PICKUP:  0.1,
+    OutcomeType.SUCCESSFUL_PICKUP:  0.2,
     OutcomeType.FUMBLE:            -0.3,
     OutcomeType.FAILED_CATCH:      -0.1, 
     OutcomeType.INACCURATE_PASS:   -0.1,
@@ -108,7 +111,7 @@ rewards_opp = {
     #Ball handling 
     OutcomeType.CATCH:             -0.0,
     OutcomeType.INTERCEPTION:      -0.2,
-    OutcomeType.SUCCESSFUL_PICKUP: -0.1,
+    OutcomeType.SUCCESSFUL_PICKUP: -0.2,
     OutcomeType.FUMBLE:             0.5,#0.1,
     OutcomeType.FAILED_CATCH:       0.1,
     OutcomeType.INACCURATE_PASS:    0.1,
@@ -185,11 +188,13 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
     if obs is not None: 
         super_shaped = 0
         
+        b = env.game.get_ball()
+        if b is None: 
+            return r, None
+        
         # Reward players and tz the 5-by-5 square with ball in middle 
         if True: 
-            b = env.game.get_ball()
-            if b is None: 
-                return r, None
+            
             
             x = b.position.x
             y = b.position.y 
@@ -209,15 +214,15 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             
             
             
-            player_in_ballzone_reward = 0.1 # min arbitrated with 6
-            tz_ballzone_reward = 0.01
-            tz_on_ball = 0.1 #min arbitrated with 4 
+            player_in_ballzone_reward = 0.1 # min arbitrated with 2 for opp, 4 for own
+            tz_ballzone_reward = 0.01 #max 0.25 
+            tz_on_ball = 0.1 #min arbitrated with 3
             
             # Opp players in ball zone
             opp_layer = obs['board']["opp players"][y_start:y_end , x_start:x_end ]
             up_layer = obs['board']["standing players"][ y_start:y_end , x_start:x_end ]
             opp_close_to_ball = np.multiply( opp_layer, up_layer).sum() 
-            opp_close_to_ball = min( opp_close_to_ball, 6) * player_in_ballzone_reward
+            opp_close_to_ball = min( opp_close_to_ball, 2) * player_in_ballzone_reward
             #REWARD - Opp players in ball zone  
             super_shaped -= opp_close_to_ball
             
@@ -229,7 +234,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             super_shaped -= opp_nbr_of_tz 
             
             opp_tz_ball = obs['board']["opp tackle zones"][ y,x] / 0.125
-            opp_tz_ball = min(opp_tz_ball, 4) * tz_on_ball
+            opp_tz_ball = min(opp_tz_ball, 3) * tz_on_ball
             #REWARD - Opp TZ on ball 
             super_shaped -= opp_tz_ball
             if debug: print("Reward - Away tz: {} - {} -  {} ".format(opp_close_to_ball, opp_nbr_of_tz, opp_tz_ball ) )
@@ -237,7 +242,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             # Own players in ball zone
             own_layer = obs['board']["own players"][y_start:y_end , x_start:x_end ]
             own_in_ballzone = np.multiply( own_layer, up_layer).sum() 
-            own_in_ballzone = min(own_in_ballzone, 6) * player_in_ballzone_reward
+            own_in_ballzone = min(own_in_ballzone, 4) * player_in_ballzone_reward
             #REWARD - Own players in ball zone  
             super_shaped += own_in_ballzone
             
@@ -249,7 +254,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             super_shaped += own_tz_ballzone
             
             own_tz_ball = obs['board']["own tackle zones"][ y,x] / 0.125
-            own_tz_ball = min(own_tz_ball, 4) * tz_on_ball 
+            own_tz_ball = min(own_tz_ball, 3) * tz_on_ball 
             #REWARD - Own TZ on ball 
             super_shaped += own_tz_ball 
             
@@ -498,9 +503,9 @@ def main():
                             gc.CrowdSurf(), 
                             gc.ChooseBlockDie()
                             ]
-        academy = gc.Academy( planned_lectures , num_processes-2,    match_processes=match_processes )
+        academy = gc.Academy( planned_lectures , num_processes, match_processes )
         
-        lectures = academy.get_next_lectures( num_processes ) + [None,None]
+        lectures = academy.get_next_lectures( ) 
         
     es = [make_env(i) for i in range(num_processes)]
     
@@ -662,7 +667,7 @@ def main():
                 }
                 action_objects.append(action_object)
 
-            lectures = academy.get_next_lectures( num_processes ) + [None, None]
+            lectures = academy.get_next_lectures(  ) 
             obs, env_reward, shaped_reward, tds_scored, tds_opp_scored, done, info = envs.step(action_objects, difficulty=difficulty,lectures=lectures)
             
             #print(f"Step - {all_steps + step}" ) 

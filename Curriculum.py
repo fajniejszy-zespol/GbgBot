@@ -253,26 +253,22 @@ class Lecture:
      
 class Academy: 
     
-    def __init__(self, lectures, nbr_of_processes, match_processes=0): 
-        self.match_processes = match_processes
+    def __init__(self, lectures, nbr_of_processes, ordinary_matches=0): 
+
         self.nbr_of_processes = nbr_of_processes 
+        self.ordinary_matches = ordinary_matches 
         
-        assert  match_processes <= nbr_of_processes
-        assert nbr_of_processes > 0 
+        assert  ordinary_matches <= nbr_of_processes
+        assert  nbr_of_processes > 0 
         
         self.lectures       = lectures  
-        self.match_lectures = [] 
         
         self.lect_names = [l.name for l in lectures]
         
         for l in self.lectures: 
             assert self.lect_names.count(l.name) == 1 
-            if l.is_full_game_lect(): 
-                self.match_lectures.append(l)
-                
-        self.match_lec_index = [self.lectures.index(l) for l in self.match_lectures]    
             
-        self.history_size = 500    
+        self.history_size = 300    
             
         
         self.len_lects = len(self.lectures) 
@@ -286,46 +282,44 @@ class Academy:
         self.max_acheived   = np.zeros( (self.len_lects, ) )
         self.max_name_len = max( [len(l.name) for l in lectures] )
         
-        self.only_matches = (nbr_of_processes == match_processes)
+        self.history_filled = np.zeros( (self.len_lects, ), dtype=bool  )
         
         self.static_max_level = np.array( [l.max_level for l in self.lectures]  )
         
         
-        if match_processes <= 0:
-            self.nbr_match_processes = 0 
-        else: 
-            self.nbr_match_processes = int(self.len_lects *(nbr_of_processes/match_processes -1)) 
-        
-        self.lec_prob = -2* np.ones( (self.len_lects + self.nbr_match_processes,) )  
-        self.lecture_pool = self.lectures + [None] * self.nbr_match_processes 
+        self.lec_prob = np.zeros( (self.len_lects ,) )  
+        self.lecture_pool = self.lectures
         
         self._update_probs() 
     
     def _update_probs(self): 
      
-        if self.only_matches: 
-            return 
         
         levels = np.array( [l.get_level() for l in self.lectures]  )
         
         diff_term       =   0.03*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
         #finished_term   =   3*self.latest_level.mean(axis=1) #*self.latest_hundred.mean(axis=1)  
         forgetting_term  =  3*(self.max_acheived - levels) / self.static_max_level 
+        history_term =  np.ones( (self.len_lects, ) ) * (self.history_filled == False) 
         
-        
-        self.lec_prob[ :self.len_lects ] = diff_term + forgetting_term 
-        self.lec_prob[ self.match_lec_index ] = float("-inf")
+        self.lec_prob = diff_term + forgetting_term + history_term
         
         self.lec_prob_soft = softmax( self.lec_prob) 
         
+        # self.bonus_matches = 2*int(round(self.lec_prob.mean() -0.49)  ) 
         
-    def get_next_lectures(self, nn):
-        if self.only_matches: 
-            return [None]*nn 
+        # bonus_min = -self.ordinary_matches +1 
+        # bonus_max = self.nbr_of_processes - self.ordinary_matches - 1
         
-        lectures = np.random.choice( self.lecture_pool, nn-len(self.match_lectures), p = self.lec_prob_soft) 
+        self.bonus_matches = 0 #min(max(self.bonus_matches,bonus_min), bonus_max )    
+            
+    def get_next_lectures(self):        
+    
+        lecture_picks = self.nbr_of_processes - self.ordinary_matches - self.bonus_matches 
+    
+        lectures = np.random.choice( self.lecture_pool, lecture_picks , p = self.lec_prob_soft) 
         
-        return self.match_lectures + list(lectures) 
+        return list(lectures) + [None] * (self.ordinary_matches+self.bonus_matches)
         
     def log_training(self, data, reward): 
         
@@ -356,11 +350,14 @@ class Academy:
         
         self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[lec_index].get_level() * outcome )
         
+        self.history_filled[lec_index] = self.history_filled[lec_index] or self.indices[lec_index]+2 >= self.history_size
+        
+        
         self._update_probs() 
         
     def report_training(self, filename=None): 
         # render plots 
-        
+
         
         s=""
         for l in self.lectures: 
