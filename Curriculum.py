@@ -78,8 +78,13 @@ def get_boundary_square(game, steps, from_position):
 def scatter_ball(game, steps, from_position): 
     # scatters ball a certain amount of steps away for original position 
     # checks are done so it's not out of bounds or on a player 
-    pos = get_boundary_square(game,steps,from_position)      
+    if steps > 0:  
+        pos = get_boundary_square(game,steps,from_position)      
+    else: 
+        pos = from_position
+    
     game.get_ball().move_to(pos)
+    game.get_ball().is_carried = False 
 
 def set_player_state(player, p_used=None, p_down=None): 
     
@@ -457,7 +462,7 @@ class PickupAndScore(Lecture):
         self.dst_mod = 5
         self.ball_mod = 4
         self.noise_mod = 3
-        self.marked_ball_mod = 3
+        self.marked_ball_mod = 2
         
         super().__init__("Pickup", self.dst_mod * self.ball_mod * self.noise_mod * self.marked_ball_mod -1) 
         
@@ -479,10 +484,14 @@ class PickupAndScore(Lecture):
         
         #setup ball carrier
         p_carrier = home_players.pop() 
-        game.move(p_carrier, Square(dst_to_td, randint(2, board_y_max -2 ) ) )
+        if level / self.max_level < random.random():  
+            p_carrier.extra_skills = [Skill.SURE_HANDS]
+        
+        move_player_within_square(game, p_carrier, x=dst_to_td, y=[2, board_y_max -2] )
         
         if ball_start == 0: 
             scatter_ball(game, ball_start +1 , p_carrier.position)
+            game.set_available_actions() 
             a = Action(action_type=ActionType.START_MOVE, position = p_carrier.position, player = p_carrier )
             game.step(a)
         else: 
@@ -490,11 +499,14 @@ class PickupAndScore(Lecture):
         ball_pos = game.get_ball().position 
         p_pos = p_carrier.position 
         
+        
         #Mark the ball
-        x=ball_pos.x 
-        y=ball_pos.y 
-        p_down = 1 - noise / (self.noise_mod -1)
-        move_player_within_square(game, away_players.pop(), x=[ x-1, x+1], y=[y-1, y+1], p_down = p_down)   
+        if marked_ball>0: 
+            marker = away_players.pop()
+            game.move(marker, get_boundary_square(game, 1, ball_pos ) )
+            marker.state.up = random.random() < 0.7
+            
+        
         
         #place rest of players at random places out of the way 
         x_left   =   0
@@ -695,7 +707,16 @@ class CrowdSurf(Lecture):
     def __init__(self): 
         self.challenge_level = 5
         #self.obstacle_mod = 4
-        super().__init__("Surf", self.challenge_level  -1, delta_level=0.05) 
+        
+        #noise = 0 blitz/block started  
+        #victim with ball 
+        #blitz steps needed 
+        
+        self.noise_mod = 2
+        self.with_ball_mod = 2
+        self.steps_mod = 6
+        
+        super().__init__("Surf",self.noise_mod * self.with_ball_mod * self.steps_mod  -1, delta_level=0.1) 
         
     def _reset_lecture(self, game): 
 
@@ -705,89 +726,69 @@ class CrowdSurf(Lecture):
     
         #Level configuration 
         level = self.get_level()        
-        challenge = (level % self.challenge_level) 
+        noise      = (level %  self.noise_mod)
+        with_ball  = (level // self.noise_mod) % self.with_ball_mod 
+        steps      = (level // self.noise_mod // self.with_ball_mod) % self.steps_mod
+        
+        blitz_steps = max(steps-1, 0)
         
         home_players = get_home_players(game)
         away_players = get_away_players(game)
         
         #setup victim
         p_victim = away_players.pop() 
-        y = random.choice([1, board_y_max]) 
-        move_player_within_square(game, p_victim, [2, board_x_max-1], y)
+        y = random.choice( [1, board_y_max] ) 
+        move_player_within_square(game, p_victim, [2, board_x_max-1], y, give_ball= with_ball>0 )
         x = p_victim.position.x
         y = p_victim.position.y 
         
         dy = 1 if y == 1 else -1 
-        dx = random.choice([-1, 1])
         
-        #challenge 0: blitz or block with assist. Other players used 
-        #challenge 1: block diagnonally with road block in place 
-        
-        #challenge 2: blitz needed 1 step
-        #challenge 3: blitz needed 2-4 steps 
-        #challenge 4: other players not used 
-        #challenge 5: 
-        
-        #ball on other victim, away team or home team. 
-        
-        assists = 2 
-        assists_p_used = 0 
-        #Setup the blocker 
+        #setup blocker 
         p_blocker = home_players.pop() 
-        if challenge == 0: 
-            game.move(p_blocker, Square(x, y+dy)) 
-            assists = 1
         
-        if challenge == 1: 
-            game.move(p_blocker, Square(x+dx, y+dy)) 
-            p2 = home_players.pop() 
-            game.move(p2, Square(x-dx, y)) 
-            assists = 0
+        if blitz_steps == 0: 
+            move_player_within_square(game, p_blocker, x=x, y=y+dy)
+            assert p_blocker.position.x == p_victim.position.x 
+        else:
+            move_player_within_square(game, p_blocker, x=[x-blitz_steps,x+blitz_steps], y=y+ dy +dy*blitz_steps )
         
-        elif challenge == 2: 
-            move_player_within_square(game, p_blocker, [x-1, x+1], [y+1*dy, y+2*dy] )
-            assists = 1
-            assists_p_used = 0.4
-        
-        elif challenge == 3 or challenge == 4 : 
-            move_player_within_square(game, p_blocker, [x-3, x+3], [y+2*dy, y+4*dy ] )
-            assists = 1
-            assists_p_used = 0.4
         
         #setup assists 
-        for _ in range(assists):
-            if len(home_players) > 0:
-                p = home_players.pop()
-                move_player_within_square(game, p, [x-1, x+1], [y, y+dy])
-                p.state.used =  random.random() < assists_p_used
-        
+        assists = randint(0,1)
+        for _ in range(assists): 
+            move_player_within_square(game, home_players.pop(), x=[x-1, x+1], y=[y,y+dy], p_down= (noise>0)*level/self.max_level)
             
+        print(f"{assists} assists")
+        
+        #add strenth? 
+        if game.num_block_dice(p_blocker, p_victim) < 0: 
+            p_blocker.extra_st = 1
             
         
-        #game.get_ball().move_to( p_victim.position ) 
-        #game.get_ball().is_carried = True 
-        #assert game.get_ball_carrier() in get_away_players(game) 
-        
-        if challenge < 3: 
-            p_used = 1
-        else: 
-            p_used = 0
-        
-        move_players_out_of_square(game, home_players, [x-3, x+3], [y-3, y+3], p_used=p_used )
-        move_players_out_of_square(game, away_players, [x-3, x+3], [y-3, y+3])
-        
-        if challenge == 0: 
-            a = Action(action_type=ActionType.START_BLITZ, position = p_blocker.position, player = p_blocker)
+        if noise == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_BLOCK if steps==0 else ActionType.START_BLITZ
+            a = Action(action_type=action_type, position = p_blocker.position, player = p_blocker )
             game.step(a)
+            
+       
+        p_used = 1-level/self.max_level
+        
+        dr = blitz_steps +3 
+        move_players_out_of_square(game, home_players, [x-dr, x+dr], [y-dr, y+dr], p_used=p_used )
+        move_players_out_of_square(game, away_players, [x-dr, x+dr], [y-dr, y+dr])
+        
         
         self.turn = deepcopy(game.state.home_team.state.turn)  
         self.len_away_team = len( get_away_players(game) ) 
     
+        self.blocker = p_blocker
+        self.victim = p_victim 
+        
+        
         
     def training_done(self, game): 
-        
-        carrier = game.get_ball_carrier()
-        
         
         training_outcome = self.len_away_team > len( get_away_players(game) ) 
         
@@ -796,7 +797,7 @@ class CrowdSurf(Lecture):
         return training_complete, training_outcome
     
     def allowed_fail_rate(self): 
-        return 0 
+        return 1/6
 
 class PreventScore(Lecture): 
     def __init__(self): 
@@ -1013,7 +1014,86 @@ class PlayAgentLecture(Lecture):
         return  game.state.game_over, (game.state.away_team.state.score <= game.state.home_team.state.score) 
     def is_full_game_lect(self): return True 
     
+class PickupKickoffBall(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 6
+        super().__init__("Kickoff pickup", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
     
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+        
+        #setup LoS oppenent
+        for _ in range( randint(3,6)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=13, y=[5,11])
+        
+        #setup rest of opponents 
+        move_players_out_of_square(game, away_players, x=[12, 50], y=[0, 20])
+        
+        
+        #get ball carrier
+        p_carrier = home_players.pop() 
+        if level / self.max_level < random.random():  
+            p_carrier.extra_skills = [Skill.SURE_HANDS]
+        
+        #setup LoS own team
+        p_used = 1 - level / (self.max_level)
+        p_used = max(1, p_used)
+        
+        for _ in range( randint(3,6)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=14, y=[5,11], p_used=p_used)
+        
+        #setup rest of team 
+        for _ in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=[15,19], y=[1,board_y_max], p_used=p_used)
+        
+        #setup ball 
+        center_square = Square(20,8)
+        scatter_ball(game, max(1,noise), center_square)
+        
+        #setup ball carrier
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game): 
+        training_outcome  = game.get_ball().is_carried #game.get_ball_carrier() in  get_home_players(game) 
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn or self.carrier.state.used 
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
     
 class PlayScriptedBot(PlayAgentLecture): 
     def __init__(self): 

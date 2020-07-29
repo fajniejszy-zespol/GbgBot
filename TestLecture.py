@@ -103,9 +103,8 @@ def msr():
     mstep()
     mrend()
 
-score = gc.PlayScriptedBot() 
+lecture = gc.PickupKickoffBall() 
 
-score.level = 2 
 def main():     
     prev_super_shaped = None 
     reset = True  
@@ -113,34 +112,58 @@ def main():
     while True: 
         
         if reset: 
-            score.increase_diff()
-            #score.level += 0.4
-            print("Scoring lecture level: {}".format(score.get_level() )) 
+            #lecture.increase_diff()
+            lecture.level += 0.21
+            print("{} lecture level: {}".format(lecture.name, lecture.get_level() )) 
             prev_super_shaped = None
-            obs = env.reset(score)
+            obs = env.reset(lecture)
             
             reset = False 
             env.render()
+            for a in env.game.get_available_actions(): 
+                print(a.action_type)
+            
             if input()=="x": 
-                set_trace()
+               set_trace()
+                
+            reset=True 
             continue 
             
         try:
             action = get_random_action(env)
+            print(f"choice={action['action-type']}")
+            
+            #if input()=="x": 
+            #    set_trace()
+            
+            
             obs, reward, done, info = env.step( action )
-            if done: 
-                reset = True 
-                continue 
+            
+            print(f"done = {done},  ball carried = {env.game.get_ball().is_carried}")
+            
+            
         
         except IndexError: 
             print("index_error")
             reset = True
             continue 
+        
+        if env.game.get_ball().is_carried: 
+            env.render()
+            x = input("ball carried!!  ")
+            env.render()
+            x = input("ball carried!!  ")
             
             
-        env.render()     
-        if input()=="x": 
-            set_trace()    
+        if done: 
+            reset = True 
+            continue 
+    
+        
+            
+#        env.render()     
+#        if input()=="x": 
+#            set_trace()    
         # except AssertionError as err: 
             # env.render()
             # print("assertion error: {}".format(err))

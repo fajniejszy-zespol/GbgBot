@@ -35,23 +35,35 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 6
+match_processes = 2
 num_steps = 10000000
 steps_per_update = 60
 
 log_interval = 20 
 save_interval = 200
 
+planned_lectures = [gc.PickupKickoffBall(),
+                    gc.Scoring(), 
+                    gc.PassAndScore(handoff=True), 
+                    gc.PickupAndScore(), 
+                    gc.BlockBallCarrier(),
+                    gc.CrowdSurf(), 
+                    gc.ChooseBlockDie()
+                    ]
+        
+
 #Test setup 
 if False: 
     env_name = "FFAI-v2"
-    num_processes = 6
-    match_processes = 3
+    num_processes = 4
+    match_processes = 0
     num_steps = 1000000
-    steps_per_update = 10
+    steps_per_update = 20
 
-    log_interval = 4
+    log_interval = 2
 
+    
+    
 
 ppcg = False 
 
@@ -84,14 +96,15 @@ rewards_own = {
     OutcomeType.TOUCHDOWN:          2,
     
     #Other 
-    OutcomeType.REROLL_USED:        -0.05, #to discourage unnecessary re-rolling 
-    OutcomeType.FAILED_GFI:         -0.1, 
+    #OutcomeType.REROLL_USED:        -0.05, #to discourage unnecessary re-rolling 
+    #OutcomeType.FAILED_GFI:         -0.1, 
     
     #Ball handling 
-    OutcomeType.CATCH:              0.0,
+    OutcomeType.CATCH:              0.1,
     OutcomeType.INTERCEPTION:       0.2,
-    OutcomeType.SUCCESSFUL_PICKUP:  0.2,
-    OutcomeType.FUMBLE:            -0.3,
+    OutcomeType.SUCCESSFUL_PICKUP:  0.3,
+    #OutcomeType.FAILED_PICKUP:      -0.1, 
+    OutcomeType.FUMBLE:            -0.2,
     OutcomeType.FAILED_CATCH:      -0.1, 
     OutcomeType.INACCURATE_PASS:   -0.1,
     
@@ -113,6 +126,7 @@ rewards_opp = {
     OutcomeType.INTERCEPTION:      -0.2,
     OutcomeType.SUCCESSFUL_PICKUP: -0.2,
     OutcomeType.FUMBLE:             0.5,#0.1,
+    OutcomeType.FAILED_PICKUP:      0.1, 
     OutcomeType.FAILED_CATCH:       0.1,
     OutcomeType.INACCURATE_PASS:    0.1,
     OutcomeType.TOUCHBACK:         -0.4,
@@ -296,7 +310,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             if debug: print("Reward scoring threat, home vs. away: {} - {}".format(home_score_threat, away_score_threat))
         
         # Reward screening 
-        if True: 
+        if False: 
             screening_reward = 0.3
             
             away_ps = gc.get_away_players(env.game)
@@ -345,7 +359,7 @@ def worker(remote, parent_remote, env, worker_id):
     steps = 0
     tds = 0
     tds_opp = 0
-    next_opp = ffai.make_bot('random')
+    next_opp = ffai.make_bot('almost-random')
 
     prev_super_shaped = None
     
@@ -496,15 +510,7 @@ class VecEnv():
 def main():
     if True: #GbgBot config 
         #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
-        planned_lectures = [gc.Scoring(), 
-                            gc.PassAndScore(handoff=True), 
-                            gc.PickupAndScore(), 
-                            gc.BlockBallCarrier(),
-                            gc.CrowdSurf(), 
-                            gc.ChooseBlockDie()
-                            ]
         academy = gc.Academy( planned_lectures , num_processes, match_processes )
-        
         lectures = academy.get_next_lectures( ) 
         
     es = [make_env(i) for i in range(num_processes)]
