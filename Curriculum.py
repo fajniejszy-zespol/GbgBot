@@ -759,7 +759,6 @@ class CrowdSurf(Lecture):
         for _ in range(assists): 
             move_player_within_square(game, home_players.pop(), x=[x-1, x+1], y=[y,y+dy], p_down= (noise>0)*level/self.max_level)
             
-        print(f"{assists} assists")
         
         #add strenth? 
         if game.num_block_dice(p_blocker, p_victim) < 0: 
