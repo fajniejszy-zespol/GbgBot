@@ -571,7 +571,9 @@ class PassAndScore(Lecture):
         move_player_within_square(game, p_pass, x=p_pass_x, y=[p_score_y-dx, p_score_y+dx], give_ball=True )
         
         #setup passer movement left 
-        p_pass.state.moves  = p_pass.get_ma() + 2 #add two to remove GFIs
+        max_movement = p_pass.get_ma() + 2 #add two to remove GFIs
+        p_pass.state.moves  = max_movement
+        
         
         if self.handoff: 
             if dx > 1: 
@@ -580,14 +582,14 @@ class PassAndScore(Lecture):
                 to_handoff = dx #double gfi to score is ok.
                 assert to_handoff <= to_not_score 
                 
-                p_pass.state.moves -= randint(to_handoff, to_not_score) 
+                p_pass.state.moves -= randint(to_handoff, min(to_not_score, max_movement) ) 
             
         else: #PassAction  
             if noise > 0: 
                 #make sure passer can't reach scorer: 
                 to_not_handoff = dx-2 
                 p_pass.state.moves  = p_pass.get_ma() + 2 #add two to remove GFIs 
-                p_pass.state.moves -= randint(0, to_not_handoff) 
+                p_pass.state.moves -= randint(0, min(to_not_handoff, max_movement) ) 
                 
         assert 0 <= p_pass.state.moves 
         
