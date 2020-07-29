@@ -308,7 +308,7 @@ class Academy:
         
         levels = np.array( [l.get_level() for l in self.lectures]  )
         
-        diff_term       =   0.1*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
+        diff_term       =   0.03*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
         #finished_term   =   3*self.latest_level.mean(axis=1) #*self.latest_hundred.mean(axis=1)  
         forgetting_term  =  3*(self.max_acheived - levels) / self.static_max_level 
         
@@ -594,7 +594,7 @@ class PassAndScore(Lecture):
         assert 0 <= p_pass.state.moves 
         
         
-        if noise == 0: 
+        if level == 0 or (noise == 0 and random.random() < 0.2) : 
             # Start the pass/handoff action 
             
             action_type = ActionType.START_HANDOFF if self.handoff else ActionType.START_PASS
