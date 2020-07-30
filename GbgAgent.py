@@ -292,7 +292,7 @@ class A2CAgent(Agent):
 
 
 # Register the bot to the framework
-ffai.register_bot('my-a2c-bot', A2CAgent)
+ffai.register_bot('GbgBot', A2CAgent)
 
 '''
 import ffai.web.server as server
