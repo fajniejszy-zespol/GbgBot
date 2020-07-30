@@ -24,7 +24,7 @@ debug_thread = False
 # Training configuration
 #num_steps = 10000000
 learning_rate = 0.001 #0.001
-gamma = 0.95
+gamma = 0.96
 entropy_coef = 0.01
 value_loss_coef = 0.5
 max_grad_norm = 0.05
@@ -35,11 +35,11 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 6
+match_processes = 5
 num_steps = 10000000
-steps_per_update = 60
+steps_per_update = 80
 
-log_interval = 20 
+log_interval = 50 
 save_interval = 200
 
 planned_lectures = [gc.PickupKickoffBall(),
@@ -53,23 +53,20 @@ planned_lectures = [gc.PickupKickoffBall(),
         
 
 #Test setup 
-if False: 
+test_setup = False  
+if test_setup : 
     env_name = "FFAI-v2"
     num_processes = 4
-    match_processes = 0
+    match_processes = 2
     num_steps = 1000000
     steps_per_update = 20
 
     log_interval = 2
 
-    
-    
-
 ppcg = False 
 
-
 # Self-play
-selfplay = True   # Use this to enable/disable self-play
+selfplay = False   # Use this to enable/disable self-play
 selfplay_window = 8
 selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
@@ -93,7 +90,7 @@ ensure_dir("plots/")
 # --- Reward function ---
 rewards_own = {
     #Scoring 
-    OutcomeType.TOUCHDOWN:          2,
+    OutcomeType.TOUCHDOWN:          3,
     
     #Other 
     #OutcomeType.REROLL_USED:        -0.05, #to discourage unnecessary re-rolling 
@@ -119,11 +116,11 @@ rewards_own = {
 }
 rewards_opp = {
     #Scoring 
-    OutcomeType.TOUCHDOWN:         -2,
+    OutcomeType.TOUCHDOWN:         -3,
     
     #Ball handling 
     OutcomeType.CATCH:             -0.0,
-    OutcomeType.INTERCEPTION:      -0.2,
+    #OutcomeType.INTERCEPTION:      -0.2,
     OutcomeType.SUCCESSFUL_PICKUP: -0.2,
     OutcomeType.FUMBLE:             0.5,#0.1,
     OutcomeType.FAILED_PICKUP:      0.1, 
@@ -181,7 +178,7 @@ class Memory(object):
             self.returns[step] = self.returns[step + 1] * gamma * self.masks[step] + self.rewards[step]
 
     
-def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, debug=False ):
+def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, debug=False, prev_pos_reward=[None,None] ):
     r = 0
     for outcome in env.get_outcomes():
         if not shaped and outcome.outcome_type != OutcomeType.TOUCHDOWN:
@@ -204,10 +201,41 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
         
         b = env.game.get_ball()
         if b is None: 
-            return r, None
+            return r, None, [None,None]
+        
+        # Reward moving forward when we have the ball or toward the ball when we don't 
+        if True: 
+            toward_ball_weight = 0.01  #max 11*6=66 
+            toward_td_weight   = 0.01  #max 11*6=66 
+            
+            home_has_ball = env.game.get_ball_carrier() in gc.get_home_players(env.game)
+        
+            positions = np.array([[p.position.x, p.position.y] for p in gc.get_home_players(env.game)] ) 
+            if home_has_ball: 
+                dist_to_td = positions[:,0].sum() 
+                super_shaped += dist_to_td   - prev_pos_reward[0] if prev_pos_reward[0] is not None else 0
+                prev_pos_reward[0] = dist_to_td
+                prev_pos_reward[1] = None 
+            
+            else: #not home_has_ball 
+                positions[:,0] -= b.position.x
+                positions[:,1] -= b.position.y
+                dist_to_ball = abs(positions).max(axis=1).sum() 
+                
+                super_shaped += dist_to_ball - prev_pos_reward[1] if prev_pos_reward[1] is not None else 0 
+                
+                prev_pos_reward[0] = None 
+                prev_pos_reward[1] = dist_to_ball 
+        
+            
         
         # Reward players and tz the 5-by-5 square with ball in middle 
         if True: 
+            #Weights  max = 
+            player_in_ballzone_reward = 0.05 # max 11 (2)
+            tz_ballzone_reward = 0.005 #max 25 
+            tz_on_ball = 0.05 # max 9 (3) 
+            
             
             
             x = b.position.x
@@ -226,56 +254,41 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             y_start = y - dy_neg
             y_end   = y + dy_pos +1
             
-            
-            
-            player_in_ballzone_reward = 0.1 # min arbitrated with 2 for opp, 4 for own
-            tz_ballzone_reward = 0.01 #max 0.25 
-            tz_on_ball = 0.1 #min arbitrated with 3
-            
             # Opp players in ball zone
             opp_layer = obs['board']["opp players"][y_start:y_end , x_start:x_end ]
             up_layer = obs['board']["standing players"][ y_start:y_end , x_start:x_end ]
             opp_close_to_ball = np.multiply( opp_layer, up_layer).sum() 
-            opp_close_to_ball = min( opp_close_to_ball, 2) * player_in_ballzone_reward
-            #REWARD - Opp players in ball zone  
-            super_shaped -= opp_close_to_ball
+            super_shaped -= min( opp_close_to_ball, 2) * player_in_ballzone_reward
             
             # Opp tz in ball zone 
             opp_tz_layer = obs['board']["opp tackle zones"][ y_start:y_end , x_start:x_end ]
             opp_nbr_of_tz = (opp_tz_layer>0).sum()   
-            opp_nbr_of_tz *= tz_ballzone_reward
-            #REWARD - Opp tz in ball zone  
-            super_shaped -= opp_nbr_of_tz 
+            super_shaped -= opp_nbr_of_tz * tz_ballzone_reward
             
             opp_tz_ball = obs['board']["opp tackle zones"][ y,x] / 0.125
-            opp_tz_ball = min(opp_tz_ball, 3) * tz_on_ball
-            #REWARD - Opp TZ on ball 
-            super_shaped -= opp_tz_ball
+            super_shaped -= min(opp_tz_ball, 3) * tz_on_ball
+            
             if debug: print("Reward - Away tz: {} - {} -  {} ".format(opp_close_to_ball, opp_nbr_of_tz, opp_tz_ball ) )
             
             # Own players in ball zone
             own_layer = obs['board']["own players"][y_start:y_end , x_start:x_end ]
             own_in_ballzone = np.multiply( own_layer, up_layer).sum() 
-            own_in_ballzone = min(own_in_ballzone, 4) * player_in_ballzone_reward
-            #REWARD - Own players in ball zone  
-            super_shaped += own_in_ballzone
+            super_shaped += min(own_in_ballzone, 2) * player_in_ballzone_reward
             
             # Own tz in ball zone 
             own_tz_layer = obs['board']["own tackle zones"][ y_start:y_end , x_start:x_end ]
             own_tz_ballzone = (own_tz_layer>0).sum()
-            own_tz_ballzone *= tz_ballzone_reward
-            #REWARD - Own tz in ball zone  
-            super_shaped += own_tz_ballzone
+            super_shaped += own_tz_ballzone * tz_ballzone_reward
             
             own_tz_ball = obs['board']["own tackle zones"][ y,x] / 0.125
-            own_tz_ball = min(own_tz_ball, 3) * tz_on_ball 
-            #REWARD - Own TZ on ball 
-            super_shaped += own_tz_ball 
+            super_shaped += min(own_tz_ball, 3) * tz_on_ball  
             
             if debug: print("Reward - Home tz: {} - {} - {}".format(own_in_ballzone, own_tz_ballzone, own_tz_ball)   )
             
         # Reward for having two scoring threats 
-        if True: 
+        if False: 
+            score_threat_weight = 0.2
+            
             home_players = gc.get_home_players(env.game) 
             away_players = gc.get_away_players(env.game)
             
@@ -288,20 +301,20 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
                 moves_to_td = player.position.x  -1 
                 tz = env.game.num_tackle_zones_in(player)
                 
-                tz = 1 - max(tz,1)/2 
+                tz = 1 - min(tz,1)/2 
                 home_score_threat += ( moves_to_td <= player.get_ma() ) * tz  
 
             for player in away_players: 
                 moves_to_td = board_x_max - player.position.x  
                 tz = env.game.num_tackle_zones_in(player)
                 
-                tz = 1 - max(tz,1)/2 
+                tz = 1 - min(tz,1)/2 
                 away_score_threat += ( moves_to_td <= player.get_ma() ) * tz  
 
 
               
-            home_score_threat = max(home_score_threat, 2)    * 0.3
-            away_score_threat = max(home_score_threat, 2)    * 0.3
+            home_score_threat = min(home_score_threat, 2)    * score_threat_weight
+            away_score_threat = min(home_score_threat, 2)    * score_threat_weight
             
             
             super_shaped += home_score_threat
@@ -351,7 +364,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
         if prev_super_shaped is not None:
             r += super_shaped - prev_super_shaped 
     
-    return r, super_shaped
+    return r, super_shaped, prev_pos_reward
 
 def worker(remote, parent_remote, env, worker_id):
     parent_remote.close()
@@ -362,6 +375,7 @@ def worker(remote, parent_remote, env, worker_id):
     next_opp = ffai.make_bot('almost-random')
 
     prev_super_shaped = None
+    prev_pos_reward = [None, None]
     
     while True:
 
@@ -383,7 +397,7 @@ def worker(remote, parent_remote, env, worker_id):
             tds = info['touchdowns']
             tds_opp_scored = info['opp_touchdowns'] - tds_opp
             tds_opp = info['opp_touchdowns']
-            reward_shaped, prev_super_shaped = reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped)
+            reward_shaped, prev_super_shaped, prev_pos_reward = reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped, prev_pos_reward = prev_pos_reward)
             ball_carrier = env.game.get_ball_carrier()
             # PPCG
             if dif < 1.0 and env.lecture is None:
@@ -622,6 +636,8 @@ def main():
         proc_rewards = np.zeros(num_processes)
         proc_tds = np.zeros(num_processes)
         proc_tds_opp = np.zeros(num_processes)
+        proc_steps = np.zeros(num_processes)
+        episode_steps = [] 
         episode_rewards = []
         episode_tds = []
         episode_tds_opp = []
@@ -629,6 +645,7 @@ def main():
         #value_losses = []
         #policy_losses = []
         log_updates = []
+        log_mean_steps = [] 
         log_episode = []
         log_steps = []
         log_win_rate = []
@@ -688,6 +705,7 @@ def main():
                 proc_tds[i] += tds_scored[i]
                 proc_tds_opp[i] += tds_opp_scored[i]
 
+            proc_steps += 1 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ or info_["reset_reward"] else [1.0] for done_, info_ in zip(done, info) ])
             dones = masks.squeeze()
@@ -699,6 +717,7 @@ def main():
                         proc_rewards[i] = 0
                         proc_tds[i] = 0
                         proc_tds_opp[i] = 0
+                        proc_steps[i] = 0  
                     else: 
                         episodes += 1 
                         if r[i] > 0:
@@ -715,6 +734,10 @@ def main():
                         else:
                             difficulty = 1
                         
+                        
+                        episode_steps.append( proc_steps[i] )
+                        proc_steps[i] = 0 
+                        
                         episode_rewards.append(proc_rewards[i])
                         episode_tds.append(proc_tds[i])
                         episode_tds_opp.append(proc_tds_opp[i])
@@ -728,8 +751,6 @@ def main():
             # insert the step taken into memory
             memory.insert(step, spatial_obs, non_spatial_obs,
                           actions.data, values.data, shaped_reward, masks, action_masks)
-
-        #print( academy.report_training() )
         
         next_value = ac_agent(Variable(memory.spatial_obs[-1], requires_grad=False), Variable(memory.non_spatial_obs[-1], requires_grad=False))[0].data
 
@@ -801,24 +822,14 @@ def main():
             with open(log_filename, "a") as myfile:
                 myfile.write(log_to_file)
 
-                  
-        
-        if all_updates % log_interval == 0: 
+                    
+        # Logging
+        if all_updates % log_interval == 0 and len(episode_rewards) >= num_processes :
+            
             gbg_log = academy.report_training()
             with open("logs/Gbg_log.txt", "a+") as f: 
                 f.write( gbg_log )
-            
-            
-            # Save model
-            torch.save(ac_agent, "models/" + model_name)
-            print("Gbg logged at step={}/{}".format(all_steps, num_steps )) 
-            
-            print(gbg_log + "\n Model saved!") 
-            
-        
-        # Logging
-        if all_updates % log_interval == 0 and len(episode_rewards) >= num_processes:
-            
+            print(gbg_log)
             
             td_rate = np.mean(episode_tds)
             td_rate_opp = np.mean(episode_tds_opp)
@@ -827,10 +838,15 @@ def main():
             mean_reward = np.mean(episode_rewards)
             episode_rewards.clear()
             win_rate = np.mean(wins)
+            results = np.array( [wins.count(1), wins.count(0.5), wins.count(0)]) / (len(wins)+0.0001) 
             wins.clear()
+            
+            mean_steps = np.mean( episode_steps ) 
+            episode_steps.clear() 
             #mean_value_loss = np.mean(value_losses)
             #mean_policy_loss = np.mean(policy_losses)    
             
+            log_mean_steps.append(mean_steps)
             log_updates.append(all_updates)
             log_episode.append(all_episodes)
             log_steps.append(all_steps)
@@ -840,21 +856,24 @@ def main():
             log_mean_reward.append(mean_reward)
             log_difficulty.append(difficulty)
 
-            log = "Updates: {}, Episodes: {}, Timesteps: {}, Win rate: {:.2f}, TD rate: {:.2f}, TD rate opp: {:.2f}, Mean reward: {:.3f}, Difficulty: {:.2f}" \
-                .format(all_updates, all_episodes, all_steps, win_rate, td_rate, td_rate_opp, mean_reward, difficulty)
+            log = "Ep: {}, Step: {}, Step/ep: {:.1f}, Results: {:.2f}/{:.2f}/{:.2f}, TD rate: {:.2f}, TD rate opp: {:.2f}, Mean reward: {:.3f}" \
+                .format(all_episodes, all_steps, mean_steps, results[0], results[1], results[2], td_rate, td_rate_opp, mean_reward)
 
-            log_to_file = "{}, {}, {}, {}, {}, {}, {}\n" \
-                .format(all_updates, all_episodes, all_steps, win_rate, td_rate, td_rate_opp, mean_reward, difficulty)
+            log_to_file = "{}, {}, {}, {}, {}, {}, {}, {}, {}\n" \
+                .format(all_episodes, all_steps, mean_steps, results[0], results[1], results[2], td_rate, td_rate_opp, mean_reward)
 
             print(log)
-
+            # Save model
+            torch.save(ac_agent, "models/" + model_name)
+            print("Model saved!") 
+            
             episodes = 0
             #value_losses.clear()
             #policy_losses.clear()
 
             
             # plot
-            n = 3
+            n = 4
             if ppcg:
                 n += 1
             fig, axs = plt.subplots(1, n, figsize=(4*n, 5))
@@ -876,12 +895,20 @@ def main():
             axs[2].set_title('Win rate')            
             axs[2].set_yticks(np.arange(0, 1.001, step=0.1))
             axs[2].set_xlim(left=0)
+            
+            axs[3].ticklabel_format(axis="x", style="sci", scilimits=(0,0))
+            axs[3].plot(log_steps, log_mean_steps)
+            axs[3].set_title('Steps/episode')
+            axs[3].set_ylim(bottom=0.0)
+            axs[3].set_xlim(left=0)
+            
+            
             if ppcg:
-                axs[3].ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
-                axs[3].plot(log_steps, log_difficulty)
-                axs[3].set_title('Difficulty')
-                axs[3].set_yticks(np.arange(0, 1.001, step=0.1))
-                axs[3].set_xlim(left=0)
+                axs[4].ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
+                axs[4].plot(log_steps, log_difficulty)
+                axs[4].set_title('Difficulty')
+                axs[4].set_yticks(np.arange(0, 1.001, step=0.1))
+                axs[4].set_xlim(left=0)
             fig.tight_layout()
             fig.savefig(f"plots/{model_name}{'_selfplay' if selfplay else ''}.png")
             plt.close('all')
