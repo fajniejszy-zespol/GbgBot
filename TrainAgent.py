@@ -35,7 +35,7 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 2
+match_processes = 6
 num_steps = 10000000
 steps_per_update = 60
 
@@ -69,7 +69,7 @@ ppcg = False
 
 
 # Self-play
-selfplay = False   # Use this to enable/disable self-play
+selfplay = True   # Use this to enable/disable self-play
 selfplay_window = 8
 selfplay_save_steps = int(num_steps / 25)
 selfplay_swap_steps = selfplay_save_steps
