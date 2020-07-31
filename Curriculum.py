@@ -705,9 +705,6 @@ class BlockBallCarrier(Lecture):
 
 class CrowdSurf(Lecture): 
     def __init__(self): 
-        self.challenge_level = 5
-        #self.obstacle_mod = 4
-        
         #noise = 0 blitz/block started  
         #victim with ball 
         #blitz steps needed 
@@ -716,7 +713,7 @@ class CrowdSurf(Lecture):
         self.with_ball_mod = 2
         self.steps_mod = 6
         
-        super().__init__("Surf",self.noise_mod * self.with_ball_mod * self.steps_mod  -1, delta_level=0.1) 
+        super().__init__("Crowd Surf",self.noise_mod * self.with_ball_mod * self.steps_mod  -1, delta_level=0.1) 
         
     def _reset_lecture(self, game): 
 

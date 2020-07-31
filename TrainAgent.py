@@ -53,7 +53,7 @@ planned_lectures = [gc.PickupKickoffBall(),
         
 
 #Test setup 
-test_setup = False  
+test_setup = True   
 if test_setup : 
     env_name = "FFAI-v2"
     num_processes = 4
@@ -98,12 +98,14 @@ rewards_own = {
     
     #Ball handling 
     OutcomeType.CATCH:              0.1,
-    OutcomeType.INTERCEPTION:       0.2,
+    OutcomeType.FAILED_CATCH:      -0.1, 
+    
     OutcomeType.SUCCESSFUL_PICKUP:  0.3,
     #OutcomeType.FAILED_PICKUP:      -0.1, 
-    OutcomeType.FUMBLE:            -0.2,
-    OutcomeType.FAILED_CATCH:      -0.1, 
-    OutcomeType.INACCURATE_PASS:   -0.1,
+    OutcomeType.FUMBLE:            -0.3,
+    
+    #OutcomeType.INACCURATE_PASS:   -0.2,
+    #OutcomeType.INTERCEPTION:       0.2,
     
     #Fighting 
     OutcomeType.KNOCKED_DOWN:      -0.1, #always reported when knocked down. Add Stun/KO/cas after
@@ -119,13 +121,13 @@ rewards_opp = {
     OutcomeType.TOUCHDOWN:         -3,
     
     #Ball handling 
-    OutcomeType.CATCH:             -0.0,
+    #OutcomeType.CATCH:             -0.0,
     #OutcomeType.INTERCEPTION:      -0.2,
     OutcomeType.SUCCESSFUL_PICKUP: -0.2,
     OutcomeType.FUMBLE:             0.5,#0.1,
-    OutcomeType.FAILED_PICKUP:      0.1, 
+    OutcomeType.FAILED_PICKUP:      0.3, 
     OutcomeType.FAILED_CATCH:       0.1,
-    OutcomeType.INACCURATE_PASS:    0.1,
+  #  OutcomeType.INACCURATE_PASS:    0.1,
     OutcomeType.TOUCHBACK:         -0.4,
     
     #Fighting 
@@ -213,7 +215,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             positions = np.array([[p.position.x, p.position.y] for p in gc.get_home_players(env.game)] ) 
             if home_has_ball: 
                 dist_to_td = positions[:,0].sum() 
-                super_shaped += dist_to_td   - prev_pos_reward[0] if prev_pos_reward[0] is not None else 0
+                super_shaped -= dist_to_td   - prev_pos_reward[0] if prev_pos_reward[0] is not None else 0
                 prev_pos_reward[0] = dist_to_td
                 prev_pos_reward[1] = None 
             
@@ -222,7 +224,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
                 positions[:,1] -= b.position.y
                 dist_to_ball = abs(positions).max(axis=1).sum() 
                 
-                super_shaped += dist_to_ball - prev_pos_reward[1] if prev_pos_reward[1] is not None else 0 
+                super_shaped -= dist_to_ball - prev_pos_reward[1] if prev_pos_reward[1] is not None else 0 
                 
                 prev_pos_reward[0] = None 
                 prev_pos_reward[1] = dist_to_ball 
