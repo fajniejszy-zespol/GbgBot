@@ -381,6 +381,9 @@ class Academy:
             avg         = self.latest_hundred[lec_index,:].mean() 
             prob        = self.lec_prob_soft[lec_index]
             reward      = self.rewards[lec_index,:].mean() 
+            
+            reward_success = self.rewards[lec_index, self.latest_hundred[lec_index] > 0.9 ].mean() 
+            
             #exceptions  = l.exceptions_thrown
             
             i=self.indices[lec_index]
@@ -388,7 +391,7 @@ class Academy:
             reward_delta = reward_flattened[ self.history_size//2: ].mean() - reward_flattened[ :self.history_size//2 ].mean() 
             
             
-            s_log = "{}, ep={:.0f}, lvl= {} ({:.0f})/{:.0f}, avg={:.0f}, p={:.0f}, rewrd= {:.3f}, rewrd/dt= {:.4f}".format(name, episodes, lvl, max_acheived, max_lvl, 100*avg, 100*prob,reward,  reward_delta)
+            s_log = "{}, ep={:.0f}, lvl= {} ({:.0f})/{:.0f}, avg={:.0f}, p={:.0f}, rewrd= {:.2f} ({}), rewrd/dt= {:.2f}".format(name, episodes, lvl, max_acheived, max_lvl, 100*avg, 100*prob,reward,  reward_success, reward_delta)
             s += s_log + "\n"
         return s
             
