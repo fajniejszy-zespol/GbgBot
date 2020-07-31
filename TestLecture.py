@@ -103,10 +103,10 @@ def msr():
     mstep()
     mrend()
 
-lecture = gc.PickupKickoffBall() 
+lecture = gc.PickupAndScore() 
 
 def main():     
-    prev_super_shaped = None 
+    
     reset = True  
     
     while True: 
@@ -115,11 +115,10 @@ def main():
             #lecture.increase_diff()
             lecture.level += 0.21
             print("{} lecture level: {}".format(lecture.name, lecture.get_level() )) 
-            prev_super_shaped = None
-            obs = env.reset(lecture)
             
-            reset = False 
+            obs = env.reset(lecture)
             env.render()
+            
             for a in env.game.get_available_actions(): 
                 print(a.action_type)
             

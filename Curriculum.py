@@ -462,12 +462,11 @@ class Scoring(Lecture):
 
 class PickupAndScore(Lecture): 
     def __init__(self): 
-        self.dst_mod = 5
+        self.dst_mod = 7 #this number becomes steps from td 
         self.ball_mod = 4
-        self.noise_mod = 3
         self.marked_ball_mod = 2
         
-        super().__init__("Pickup", self.dst_mod * self.ball_mod * self.noise_mod * self.marked_ball_mod -1) 
+        super().__init__("Pickup", self.dst_mod * self.ball_mod * self.marked_ball_mod -1) 
         
     def _reset_lecture(self, game): 
 
@@ -479,36 +478,46 @@ class PickupAndScore(Lecture):
         level = self.get_level()        
         dst_to_td =     (level % self.dst_mod) +2
         ball_start =    (level // self.dst_mod) % self.ball_mod 
-        noise =         (level // self.dst_mod // self.ball_mod ) % self.noise_mod
-        marked_ball =   (level // self.dst_mod // self.ball_mod  // self.noise_mod) % self.marked_ball_mod 
+        marked_ball =   (level // self.dst_mod // self.ball_mod) % self.marked_ball_mod 
         
         home_players = get_home_players(game)
         away_players = get_away_players(game)
         
-        #setup ball carrier
         p_carrier = home_players.pop() 
-        if level / self.max_level < random.random():  
-            p_carrier.extra_skills = [Skill.SURE_HANDS]
-        
         move_player_within_square(game, p_carrier, x=dst_to_td, y=[2, board_y_max -2] )
         
-        if ball_start == 0: 
-            scatter_ball(game, ball_start +1 , p_carrier.position)
-            game.set_available_actions() 
-            a = Action(action_type=ActionType.START_MOVE, position = p_carrier.position, player = p_carrier )
-            game.step(a)
-        else: 
-            scatter_ball(game, ball_start , p_carrier.position)
+        scatter_ball(game, max(ball_start,1) , p_carrier.position)
+        ball_pos = game.get_ball().position 
+       
+        
+        
+        #setup SURE HANDS?  
+        if 0.5 < random.random():  
+            p_carrier.extra_skills += [Skill.SURE_HANDS]
+            
+        #moves needed 
+        moves_required = p_carrier.position.distance(ball_pos) + (ball_pos.x - 1 )
+        extra_ma = moves_required - p_carrier.get_ma() 
+        p_carrier.extra_ma = max(min(extra_ma, 2), 0) 
+        
+        
+        #Move the ball a little bit to enable score. 
+        move_ball_dx = max(moves_required - p_carrier.get_ma() -1,0) #one GFI ok  
+        game.get_ball().position.x -= move_ball_dx
+        if game.get_ball().position == p_carrier.position: 
+            game.get_ball().position.x -= 1 #Make sure it's not moved unto the carrier 
+        
+        
         ball_pos = game.get_ball().position 
         p_pos = p_carrier.position 
-        
-        
         #Mark the ball
         if marked_ball>0: 
             marker = away_players.pop()
             game.move(marker, get_boundary_square(game, 1, ball_pos ) )
             marker.state.up = random.random() < 0.7
             
+            if 0.5 < random.random():  
+                p_carrier.extra_skills += [Skill.DODGE]
         
         
         #place rest of players at random places out of the way 
@@ -517,10 +526,15 @@ class PickupAndScore(Lecture):
         y_top    =   min( p_pos.y, ball_pos.y)-1
         y_bottom =   max( p_pos.y, ball_pos.y)+1
         
-        p_used = 1 - noise / (self.noise_mod -1)
+        p_used = 1 - level/(self.max_level)
         
         move_players_out_of_square(game, home_players, [x_left, x_right], [y_top, y_bottom],p_used=p_used)
         move_players_out_of_square(game, away_players, [x_left, x_right], [y_top, y_bottom] )
+        
+        if ball_start==0: 
+            game.set_available_actions() 
+            a = Action(action_type=ActionType.START_MOVE, position = p_carrier.position, player = p_carrier )
+            game.step(a)
         
         self.turn = deepcopy(game.state.home_team.state.turn)  
     
