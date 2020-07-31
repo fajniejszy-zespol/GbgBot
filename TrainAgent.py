@@ -34,10 +34,10 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 #env_name = "FFAI-7-v2"
 
 env_name = "FFAI-v2"
-num_processes = 10
-match_processes = 2
+num_processes = 8
+match_processes = 4 
 num_steps = 10000000
-steps_per_update = 40
+steps_per_update = 80 
 
 log_interval = 25 
 save_interval = 200
@@ -53,7 +53,7 @@ planned_lectures = [gc.PickupKickoffBall(),
         
 
 #Test setup 
-test_setup = True   
+test_setup = False   
 if test_setup : 
     env_name = "FFAI-v2"
     num_processes = 4
