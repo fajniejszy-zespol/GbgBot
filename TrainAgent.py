@@ -214,7 +214,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
         
             positions = np.array([[p.position.x, p.position.y] for p in gc.get_home_players(env.game)] ) 
             if home_has_ball: 
-                dist_to_td = positions[:,0].sum() 
+                dist_to_td = positions[:,0].sum() * toward_td_weight
                 super_shaped -= dist_to_td   - prev_pos_reward[0] if prev_pos_reward[0] is not None else 0
                 prev_pos_reward[0] = dist_to_td
                 prev_pos_reward[1] = None 
@@ -222,7 +222,7 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             else: #not home_has_ball 
                 positions[:,0] -= b.position.x
                 positions[:,1] -= b.position.y
-                dist_to_ball = abs(positions).max(axis=1).sum() 
+                dist_to_ball = abs(positions).max(axis=1).sum() * toward_ball_weight 
                 
                 super_shaped -= dist_to_ball - prev_pos_reward[1] if prev_pos_reward[1] is not None else 0 
                 
