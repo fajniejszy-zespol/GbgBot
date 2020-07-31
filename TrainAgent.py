@@ -34,12 +34,12 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 #env_name = "FFAI-7-v2"
 
 env_name = "FFAI-v2"
-num_processes = 8
-match_processes = 5
+num_processes = 10
+match_processes = 2
 num_steps = 10000000
-steps_per_update = 80
+steps_per_update = 40
 
-log_interval = 50 
+log_interval = 25 
 save_interval = 200
 
 planned_lectures = [gc.PickupKickoffBall(),
@@ -194,8 +194,8 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
             r += rewards_opp[outcome.outcome_type]
     if info['ball_progression'] > 0:
         r += info['ball_progression'] * ball_progression_reward
-    
-    super_shaped = 0
+   
+    super_shaped = None 
     if obs is not None: 
         super_shaped = 0
         
@@ -415,6 +415,8 @@ def worker(remote, parent_remote, env, worker_id):
                 env.opp_actor = next_opp
                 obs = env.reset(lecture)
                 steps = 0
+                prev_pos_reward = [None, None]
+                prev_super_shaped = None 
                 tds = 0
                 tds_opp = 0
             
@@ -429,6 +431,7 @@ def worker(remote, parent_remote, env, worker_id):
             tds_opp = 0
             env.opp_actor = next_opp
             prev_super_shaped = None 
+            prev_pos_reward = [None, None]
             obs = env.reset(lecture)
             # set_difficulty(env, dif)
             remote.send(obs)
