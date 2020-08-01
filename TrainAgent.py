@@ -35,11 +35,11 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 4 
+match_processes = 7
 num_steps = 10000000
-steps_per_update = 80 
+steps_per_update = 70 
 
-log_interval = 25 
+log_interval = 50 
 save_interval = 200
 
 planned_lectures = [gc.Scoring(), 
