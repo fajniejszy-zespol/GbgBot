@@ -25,8 +25,12 @@ def get_away_players(game):
 
 def get_boundary_square(game, steps, from_position): 
     steps = int(steps)
+    
     if steps == 0: 
-        return from_position
+        if game.state.pitch.board[from_position.y][from_position.x] is None: 
+            return from_position
+        else: 
+            steps += 1 
     
     # return a position that is 'steps' away from 'from_position'
     # checks are done so it's square is available 
@@ -913,7 +917,7 @@ class PreventScore(Lecture):
         
         #setup ball carrier  
         p_carrier = offence.pop() 
-        move_player_within_square(game, p_carrier, x=[3, 9], y=[1, board_y_max], give_ball=False)
+        move_player_within_square(game, p_carrier, x=[3, 9], y=[2, board_y_max-1], give_ball=False)
         extra_ma = (p_carrier.position.x - 1) - p_carrier.get_ma() 
         p_carrier.extra_ma = max(min(extra_ma, 2), 0)
         
@@ -927,6 +931,7 @@ class PreventScore(Lecture):
         
         guy1 = defence.pop()
         guy2 = defence.pop()
+        
         game.move(guy1, get_boundary_square(game, scatter_1, marker_up_pos))
         game.move(guy2, get_boundary_square(game, scatter_2, marker_down_pos) )
         
