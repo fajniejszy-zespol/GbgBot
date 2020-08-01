@@ -103,7 +103,7 @@ def msr():
     mstep()
     mrend()
 
-lecture = gc.PickupAndScore() 
+lecture = gc.PreventScore(home_defence=True, debug=True) 
 
 def main():     
     

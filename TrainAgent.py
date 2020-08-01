@@ -42,10 +42,12 @@ steps_per_update = 80
 log_interval = 25 
 save_interval = 200
 
-planned_lectures = [gc.PickupKickoffBall(),
-                    gc.Scoring(), 
+planned_lectures = [gc.Scoring(), 
                     gc.PassAndScore(handoff=True), 
                     gc.PickupAndScore(), 
+                    gc.PreventScore(home_defence=False), 
+                    gc.PreventScore(home_defence=True),
+                    gc.PickupKickoffBall(),
                     gc.BlockBallCarrier(),
                     gc.CrowdSurf(), 
                     gc.ChooseBlockDie()
@@ -66,9 +68,9 @@ if test_setup :
 ppcg = False 
 
 # Self-play
-selfplay = False   # Use this to enable/disable self-play
-selfplay_window = 8
-selfplay_save_steps = int(num_steps / 25)
+selfplay = True   # Use this to enable/disable self-play
+selfplay_window = 4
+selfplay_save_steps = int(num_steps / 10)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
@@ -124,7 +126,7 @@ rewards_opp = {
     #OutcomeType.CATCH:             -0.0,
     #OutcomeType.INTERCEPTION:      -0.2,
     OutcomeType.SUCCESSFUL_PICKUP: -0.2,
-    OutcomeType.FUMBLE:             0.5,#0.1,
+    OutcomeType.FUMBLE:             0.5,#0.1,   #PROBLEM: prefers to pick both down over push even without block skill !! 
     OutcomeType.FAILED_PICKUP:      0.3, 
     OutcomeType.FAILED_CATCH:       0.1,
   #  OutcomeType.INACCURATE_PASS:    0.1,
