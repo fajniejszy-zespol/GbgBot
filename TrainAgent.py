@@ -35,11 +35,11 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 7
+match_processes = 5
 num_steps = 10000000
-steps_per_update = 70 
+steps_per_update = 60 
 
-log_interval = 50 
+log_interval = 40 
 save_interval = 200
 
 planned_lectures = [gc.Scoring(), 
@@ -69,8 +69,8 @@ ppcg = False
 
 # Self-play
 selfplay = True   # Use this to enable/disable self-play
-selfplay_window = 4
-selfplay_save_steps = int(num_steps / 10)
+selfplay_window = 1
+selfplay_save_steps = int(num_steps / 2)
 selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
