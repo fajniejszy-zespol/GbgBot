@@ -879,7 +879,7 @@ class PreventScore(Lecture):
             if game.away_agent.name.find("selfplay") < 0: 
                 print(f"expected away agent name 'selfplay*', got '{game.away_agent.name}'")
             
-            assert game.away_agent.name == self.away_agent_name
+                assert False 
         
         
         # ### CONFIG ### # 
