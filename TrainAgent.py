@@ -39,7 +39,7 @@ match_processes = 5
 num_steps = 10000000
 steps_per_update = 60 
 
-log_interval = 40 
+log_interval = 20 
 save_interval = 200
 
 planned_lectures = [gc.Scoring(), 
@@ -55,7 +55,7 @@ planned_lectures = [gc.Scoring(),
         
 
 #Test setup 
-test_setup = False   
+test_setup = False    
 if test_setup : 
     env_name = "FFAI-v2"
     num_processes = 4
@@ -63,7 +63,7 @@ if test_setup :
     num_steps = 1000000
     steps_per_update = 20
 
-    log_interval = 2
+    log_interval = 1
 
 ppcg = False 
 
@@ -626,6 +626,16 @@ def main():
     difficulty = 0.0
     dif_delta = 0.01
 
+        # self-play
+    selfplay_next_save = selfplay_save_steps
+    selfplay_next_swap = selfplay_swap_steps
+    selfplay_models = 0
+    if selfplay:
+        model_path = f"models/{model_name}_selfplay_0"
+        torch.save(ac_agent, model_path)
+        envs.swap(A2CAgent(name=f"selfplay-0", env_name=env_name, filename=model_path))
+        selfplay_models += 1
+
     # Reset environments
     obs = envs.reset(difficulty, lectures)
     spatial_obs, non_spatial_obs = update_obs(obs)
@@ -661,15 +671,7 @@ def main():
         log_mean_reward = []
         log_difficulty = []
 
-    # self-play
-    selfplay_next_save = selfplay_save_steps
-    selfplay_next_swap = selfplay_swap_steps
-    selfplay_models = 0
-    if selfplay:
-        model_path = f"models/{model_name}_selfplay_0"
-        torch.save(ac_agent, model_path)
-        envs.swap(A2CAgent(name=f"selfplay-0", env_name=env_name, filename=model_path))
-        selfplay_models += 1
+
 
     print("Training started!")
     while all_steps < num_steps:
