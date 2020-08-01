@@ -855,12 +855,11 @@ class CrowdSurf(Lecture):
         return 1/6
 
 class PreventScore(Lecture): 
-    def __init__(self, home_defence, reverse_agent_play_first = False ,away_agent_name = "GbgBot", debug = False): 
+    def __init__(self, home_defence, reverse_agent_play_first = False , debug = False): 
         #Reverse = True - used to evaluate that the agent can score if nothing is done from the setup.
         #reverse_play_first = True - Let away agent do a turn first then let home try to score. TODO! 
         assert not reverse_agent_play_first #not implemented 
         
-        self.away_agent_name = away_agent_name 
         self.home_defence = home_defence
         self.debug = debug 
         
@@ -877,6 +876,9 @@ class PreventScore(Lecture):
     def _reset_lecture(self, game): 
         
         if self.home_defence and not self.debug: 
+            if game.away_agent.name.find("selfplay") < 0: 
+                print(f"expected away agent name 'selfplay*', got '{game.away_agent.name}'")
+            
             assert game.away_agent.name == self.away_agent_name
         
         
