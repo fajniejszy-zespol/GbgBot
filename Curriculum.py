@@ -342,12 +342,14 @@ class Academy:
         
         levels = np.array( [l.get_level() for l in self.lectures]  )
         
-        diff_term       =   0.03*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
-        #finished_term   =   3*self.latest_level.mean(axis=1) #*self.latest_hundred.mean(axis=1)  
+        #diff_term       =   0.03*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
+        
+        low_progress    =  3 *  np.array([1-l.get_diff() for l in self.lectures])
+        
         forgetting_term  =  3*(self.max_acheived - levels) / self.static_max_level 
         history_term =  np.ones( (self.len_lects, ) ) * (self.history_filled == False) 
         
-        self.lec_prob = diff_term + forgetting_term + history_term
+        self.lec_prob =  forgetting_term + history_term + low_progress #+ diff_term
         
         self.lec_prob_soft = softmax( self.lec_prob) 
         
@@ -870,12 +872,15 @@ class PreventScore(Lecture):
         self.noise_mod = 2 
         self.scatter1_mod = 5 
         self.scatter2_mod = 5 
+        self.offence_support_mod = 4
         
-        max_level = self.noise_mod * self.scatter1_mod * self.scatter2_mod -1
+        max_level = self.noise_mod * self.scatter1_mod * self.scatter2_mod * self.offence_support_mod -1
         
         name = f"Prevent {'(reverse)' if not home_defence else ''}" 
         
-        super().__init__(name, max_level, delta_level= 0.1)
+        delta_level = 0.1 if home_defence else 0.4 
+        
+        super().__init__(name, max_level, delta_level= delta_level)
         
     def _reset_lecture(self, game): 
         
@@ -896,6 +901,7 @@ class PreventScore(Lecture):
         noise           = level % self.noise_mod 
         scatter_1       = (level // self.noise_mod) % self.scatter1_mod
         scatter_2       = (level // self.noise_mod // self.scatter1_mod) % self.scatter2_mod
+        offence_support = (level // self.noise_mod // self.scatter1_mod // self.scatter2_mod) % self.offence_support_mod
         
         if level%2==0:
             temp = scatter_1 
@@ -946,13 +952,18 @@ class PreventScore(Lecture):
         downwards_y = ball_y + 4
         
         while upwards_y > 0: #Potential special case at equal 0. 
-            move_player_within_square(game, defence.pop(), x=[ball_x-1, ball_x+1], y = upwards_y, p_used=p_used_defence)
+            move_player_within_square(game, defence.pop(), x=[ball_x-2, ball_x+2], y = upwards_y, p_used=p_used_defence)
             upwards_y -= 4 
         
         while downwards_y < board_y_max+1: #Potential special case at equal to board_y_max +1 
-            move_player_within_square(game, defence.pop(), x=[ball_x-1, ball_x+1], y = downwards_y, p_used=p_used_defence) 
+            move_player_within_square(game, defence.pop(), x=[ball_x-2, ball_x+2], y = downwards_y, p_used=p_used_defence) 
             downwards_y += 4 
-            
+        
+        #setup offensive support
+        for _ in range(offence_support): 
+            move_player_within_square(game, offence.pop(), x=[ball_x-3,ball_x+3], y=[ball_y-3,ball_y+3] )
+
+        
         #setup other players randomly 
         move_players_out_of_square(game, defence, x=[0, ball_x + 5], y=[0,20], p_used = p_used_defence) #home 
         move_players_out_of_square(game, offence, x=[0, ball_x + 5], y=[0,20], p_used = p_used_offence) 
