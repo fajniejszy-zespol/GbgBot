@@ -345,8 +345,10 @@ class Academy:
         diff_term       =   0.03*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
         #finished_term   =   3*self.latest_level.mean(axis=1) #*self.latest_hundred.mean(axis=1)  
         forgetting_term  =  3*(self.max_acheived - levels) / self.static_max_level 
-        history_term =  np.ones( (self.len_lects, ) ) * (self.history_filled == False) 
-        
+        history_term =  4*np.ones( (self.len_lects, ) ) * (self.history_filled == False) 
+ 
+
+
         self.lec_prob = diff_term + forgetting_term + history_term
         
         self.lec_prob_soft = softmax( self.lec_prob) 
@@ -395,7 +397,7 @@ class Academy:
         
         self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[lec_index].get_level() * outcome )
         
-        self.history_filled[lec_index] = self.history_filled[lec_index] or self.indices[lec_index]+2 >= self.history_size
+        self.history_filled[lec_index] = self.history_filled[lec_index] or self.indices[lec_index]+10 >= self.history_size
         
         
         self._update_probs() 
