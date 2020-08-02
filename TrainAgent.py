@@ -35,27 +35,27 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 
 env_name = "FFAI-v2"
 num_processes = 8
-match_processes = 5
+match_processes = 2
 num_steps = 10000000
 steps_per_update = 60 
 
-log_interval = 20 
-save_interval = 200
+log_interval = 30 
+save_interval = log_interval*3
 
-planned_lectures = [gc.Scoring(), 
+planned_lectures = [#gc.Scoring(), 
                     gc.PassAndScore(handoff=True), 
                     gc.PickupAndScore(), 
                     gc.PreventScore(home_defence=False), 
-                    gc.PreventScore(home_defence=True),
-                    gc.PickupKickoffBall(),
-                    gc.BlockBallCarrier(),
-                    gc.CrowdSurf(), 
-                    gc.ChooseBlockDie()
+                    gc.PreventScore(home_defence=True)
+                    #gc.PickupKickoffBall(),
+                    #gc.BlockBallCarrier(),
+                    #gc.CrowdSurf(), 
+                    #gc.ChooseBlockDie()
                     ]
         
 
 #Test setup 
-test_setup = False    
+test_setup = False     
 if test_setup : 
     env_name = "FFAI-v2"
     num_processes = 4
@@ -626,7 +626,7 @@ def main():
     difficulty = 0.0
     dif_delta = 0.01
 
-        # self-play
+    # self-play
     selfplay_next_save = selfplay_save_steps
     selfplay_next_swap = selfplay_swap_steps
     selfplay_models = 0
@@ -831,13 +831,19 @@ def main():
             with open(log_filename, "a") as myfile:
                 myfile.write(log_to_file)
 
-                    
+            gbg_log = academy.report_training()
+            with open("logs/Gbg_log.txt", "a+") as f: 
+                f.write( gbg_log )
+            
+            # Save model
+            torch.save(ac_agent, "models/" + model_name)
+            print("Model saved!") 
+
+            
         # Logging
         if all_updates % log_interval == 0 and len(episode_rewards) >= num_processes :
             
             gbg_log = academy.report_training()
-            with open("logs/Gbg_log.txt", "a+") as f: 
-                f.write( gbg_log )
             print(gbg_log)
             
             td_rate = np.mean(episode_tds)
@@ -872,9 +878,7 @@ def main():
                 .format(all_episodes, all_steps, mean_steps, results[0], results[1], results[2], td_rate, td_rate_opp, mean_reward)
 
             print(log)
-            # Save model
-            torch.save(ac_agent, "models/" + model_name)
-            print("Model saved!") 
+            
             
             episodes = 0
             #value_losses.clear()
