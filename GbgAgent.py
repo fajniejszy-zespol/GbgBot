@@ -255,8 +255,16 @@ class A2CAgent(Agent):
             mask = np.zeros(self.action_space)
             i = 0
             for action_type in self.non_spatial_action_types:
-                mask[i] = ob['available-action-types'][action_type.name]
+                
+                if action_type.name == ActionType.END_TURN and ob['available-action-types'].values().count(1.0)>1:
+                    mask[i] = 0
+                else:     
+                    mask[i] = ob['available-action-types'][action_type.name]
                 i += 1
+            
+                
+            
+            
             for action_type in self.spatial_action_types:
                 if ob['available-action-types'][action_type.name] == 0:
                     mask[i:i+self.board_squares] = 0
@@ -292,7 +300,7 @@ class A2CAgent(Agent):
 
 
 # Register the bot to the framework
-ffai.register_bot('GbgBot', A2CAgent)
+ffai.register_bot('GbgBot', A2CAgent) 
 
 '''
 import ffai.web.server as server
