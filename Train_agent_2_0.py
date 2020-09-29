@@ -25,7 +25,7 @@ gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
 max_grad_norm = 0.05
-log_interval = 2
+log_interval = 20
 save_interval = 500
 ppcg = False
 
@@ -668,7 +668,12 @@ def main():
             fig.savefig(f"plots/{model_name}{'_selfplay' if selfplay else ''}.png")
             plt.close('all')
 
-
+        #send updated agent to workers
+        agent.policy = ac_agent 
+        envs.update_trainee(agent) 
+        
+        
+        
     torch.save(ac_agent, "models/" + model_name)
     envs.close()
 
