@@ -133,6 +133,7 @@ class A2CAgent(Agent):
         self.policy = torch.load(filename)
         self.policy.eval()
         self.end_setup = False
+        self.cnn_used = False
 
     def new_game(self, game, team):
         self.my_team = team
@@ -144,15 +145,23 @@ class A2CAgent(Agent):
             flipped[name] = np.flip(layer, 1)
         return flipped
 
-    def act(self, game):
+    def act(self, game, env=None, obs=None):
 
+        self.cnn_used = False 
         if self.end_setup:
             self.end_setup = False
             return ffai.Action(ActionType.END_SETUP)
-
+        
         # Get observation
-        self.env.game = game
-        observation = self.env.get_observation()
+        if game is None: 
+            game = env.game 
+            if obs is None: 
+                observation = self.env.get_observation()
+            else: 
+                observation = obs 
+        else: 
+            self.env.game = game
+            observation = self.env.get_observation()
 
         # Flip board observation if away team - we probably only trained as home team
         if not self.is_home:
@@ -163,15 +172,19 @@ class A2CAgent(Agent):
 
         action_masks = self._compute_action_masks(obs)
         action_masks = torch.tensor(action_masks, dtype=torch.bool)
-
+        
+        
+        
         values, actions = self.policy.act(
             Variable(spatial_obs),
             Variable(non_spatial_obs),
             Variable(action_masks))
 
+        values.detach() 
         # Create action from output
         action = actions[0]
         value = values[0]
+        value.detach() 
         action_type, x, y = self._compute_action(action.numpy()[0])
         position = Square(x, y) if action_type in FFAIEnv.positional_action_types else None
 
@@ -185,9 +198,21 @@ class A2CAgent(Agent):
         if action_type.name.lower().startswith('setup'):
             self.end_setup = True
 
+        
+        action_object = {
+                            'action-type': action_type,
+                            'x': x,
+                            'y': y } 
+        
+        self.cnn_used = True  
+        
         # Return action to the framework
-        return action
+        #return (action, actions, action_masks) 
+        return (action_object, actions, action_masks, value) 
 
+    def cnn_used_for_latest_action(self): 
+        return self.cnn_used 
+    
     def end_game(self, game):
         pass
 
