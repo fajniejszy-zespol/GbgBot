@@ -147,6 +147,10 @@ class A2CAgent(Agent):
 
     def act(self, game, env=None, obs=None):
 
+        '''todo - Update code to get observations that are torch tensors. 
+                - because they are either way converted for the policy optimization. 
+        '''
+    
         self.cnn_used = False 
         if self.end_setup:
             self.end_setup = False
@@ -157,8 +161,13 @@ class A2CAgent(Agent):
             game = env.game 
             if obs is None: 
                 observation = self.env.get_observation()
+                # TODO - call update_obs here 
             else: 
                 observation = obs 
+                
+            
+            
+            
         else: 
             self.env.game = game
             observation = self.env.get_observation()

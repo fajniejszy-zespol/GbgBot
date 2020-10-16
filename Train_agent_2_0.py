@@ -187,6 +187,9 @@ def worker(remote, parent_remote, env, worker_id):
                     
                     
                     obs, reward, done, info = env.step(action)
+                    
+                    # Todo, call for update_obs here  
+                    
                     tds_scored = info['touchdowns'] - tds
                     tds = info['touchdowns']
                     tds_opp_scored = info['opp_touchdowns'] - tds_opp
@@ -284,11 +287,12 @@ class VecEnv():
             cumul_shaped_rewards += np.stack(rews_shaped)
             cumul_tds_scored += np.stack(tds)
             cumul_tds_opp_scored += np.stack(tds_opp)
+            assert False # I don't think the code comes here 
         if cumul_dones is None:
             cumul_dones = np.stack(dones)
         else:
             cumul_dones |= np.stack(dones)
-        
+            assert False # I don't think the code comes here  
         
         actions_ = torch.squeeze( torch.stack(actions), dim=1)
         #values_  = torch.squeeze( torch.stack(values), dim=1) 
