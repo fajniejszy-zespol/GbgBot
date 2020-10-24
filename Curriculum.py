@@ -367,6 +367,9 @@ class Academy:
         
         return list(lectures) + [None] * (self.ordinary_matches+self.bonus_matches)
         
+    def add_lecture(self, lect): 
+        assert False 
+    
     def log_training(self, data, reward): 
         
         name    = data[0]
