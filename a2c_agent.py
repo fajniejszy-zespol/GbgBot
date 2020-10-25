@@ -38,7 +38,8 @@ class CNNPolicy(nn.Module):
         # The outputs
         self.critic = nn.Linear(hidden_nodes, 1)
         self.actor = nn.Linear(hidden_nodes, actions)
-
+        self.outcome_pred = nn.Linear(hidden_nodes, 1)
+        
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -49,6 +50,7 @@ class CNNPolicy(nn.Module):
         self.linear1.weight.data.mul_(relu_gain)
         self.actor.weight.data.mul_(relu_gain)
         self.critic.weight.data.mul_(relu_gain)
+        self.outcome_pred.weight.data.mul_(relu_gain)
 
     def forward(self, spatial_input, non_spatial_input):
         """
@@ -78,9 +80,10 @@ class CNNPolicy(nn.Module):
         # Output streams
         value = self.critic(x3)
         actor = self.actor(x3)
-
+        outcome = self.outcome_pred(x3) 
+        
         # return value, policy
-        return value, actor
+        return value, actor, outcome 
 
     def act(self, spatial_inputs, non_spatial_input, action_mask):
         values, action_probs = self.get_action_probs(spatial_inputs, non_spatial_input, action_mask=action_mask)
@@ -88,7 +91,7 @@ class CNNPolicy(nn.Module):
         return values, actions
 
     def evaluate_actions(self, spatial_inputs, non_spatial_input, actions, actions_mask):
-        value, policy = self(spatial_inputs, non_spatial_input)
+        value, policy, pred = self(spatial_inputs, non_spatial_input)
         actions_mask = actions_mask.view(-1, 1, actions_mask.shape[2]).squeeze().bool()
         policy[~actions_mask] = float('-inf')
         log_probs = F.log_softmax(policy, dim=1)
@@ -96,10 +99,10 @@ class CNNPolicy(nn.Module):
         action_log_probs = log_probs.gather(1, actions)
         log_probs = torch.where(log_probs[None, :] == float('-inf'), torch.tensor(0.), log_probs)
         dist_entropy = -(log_probs * probs).sum(-1).mean()
-        return action_log_probs, value, dist_entropy
+        return action_log_probs, value, dist_entropy, pred
 
     def get_action_probs(self, spatial_input, non_spatial_input, action_mask):
-        values, actions = self(spatial_input, non_spatial_input)
+        values, actions, pred = self(spatial_input, non_spatial_input)
         # Masking step: Inspired by: http://juditacs.github.io/2018/12/27/masked-attention.html
         if action_mask is not None:
             actions[~action_mask] = float('-inf')
@@ -260,29 +263,22 @@ class A2CAgent(Agent):
         spatial_action_type = self.spatial_action_types[spatial_action_type_idx]
         return spatial_action_type, spatial_x, spatial_y
 
-    def _update_obs(self, observations):
+    def _update_obs(self, obs):
         """
         Takes the observation returned by the environment and transforms it to an numpy array that contains all of
         the feature layers and non-spatial info.
         """
-        spatial_obs = []
-        non_spatial_obs = []
+        
+        spatial_obs = np.stack(obs['board'].values())
 
-        for obs in observations:
-            spatial_ob = np.stack(obs['board'].values())
+        state = list(obs['state'].values())
+        procedures = list(obs['procedures'].values())
+        actions = list(obs['available-action-types'].values())
 
-            state = list(obs['state'].values())
-            procedures = list(obs['procedures'].values())
-            actions = list(obs['available-action-types'].values())
+        non_spatial_obs = np.stack(state+procedures+actions)
+        non_spatial_obs = np.expand_dims(non_spatial_ob, axis=0)
 
-            non_spatial_ob = np.stack(state+procedures+actions)
-
-            # feature_layers = np.expand_dims(feature_layers, axis=0)
-            non_spatial_ob = np.expand_dims(non_spatial_ob, axis=0)
-
-            spatial_obs.append(spatial_ob)
-            non_spatial_obs.append(non_spatial_ob)
-
+        
         return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
 
     def make_env(self, env_name):
