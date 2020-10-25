@@ -40,7 +40,9 @@ class Memory(object):
         self.action_masks[step:end].copy_(worker_mem.action_masks[:steps_to_copy]) 
 
         self.step += steps_to_copy
-        
+    
+    def not_full(self): 
+        return 0.9*self.max_steps > self.steps 
     
 class WorkerMemory(object): 
     def __init__(self, max_steps, spatial_obs_shape, non_spatial_obs_shape, action_space):
@@ -83,13 +85,10 @@ class WorkerMemory(object):
         
         # reward is added to the previously inserted reward 
         self.reward[step] += reward 
-        
-        
-        
+         
     def insert_epside_end(self, td_outcome): 
         
         self.td_outcome[:] = td_outcome
-        
         
         # Compute returns 
         assert not (self.step == 0 and self.looped == False)
@@ -117,9 +116,7 @@ class WorkerMemory(object):
         self.spatial_obs[0].copy_(spatial_obs)
         self.non_spatial_obs[0].copy_(non_spatial_obs)
         
-        
-        
-            
+                  
 class VecEnv():
     def __init__(self, envs, academy, starting_agent, ):
         """
@@ -164,10 +161,7 @@ class VecEnv():
             
         return True 
     
-    def swap(self, agent):
-        for remote in self.remotes:
-            remote.send(('swap opp', agent))
-
+    
     def update_trainee(self, agent): 
         for remote in self.remotes:
             remote.send(('swap trainee', agent))
@@ -192,16 +186,13 @@ def worker(remote, parent_remote, env, worker_id):
 
     trainee = None 
     lectures = [] 
-    next_opp = None 
     worker_running = True 
     
     memory = WorkerMemory( """ BLA BLA BLA """)
     
-    while trainee is None or len(lectures)==0 or next_opp is None: 
+    while trainee is None or len(lectures)==0: 
         command, data = remote.recv()
-        if command == 'swap opp':
-            next_opp = data
-        elif command == 'swap trainee': 
+        if command == 'swap trainee': 
             trainee = data
         elif command == 'queue lecture': 
             lecture.append(data)
@@ -215,7 +206,9 @@ def worker(remote, parent_remote, env, worker_id):
     lect = lectures.pop() 
     obs = env.reset(lect)
     
-    memory.insert_first_obs(""" BLA BLA """)
+    spatial_obs, non_spatial_obs = trainee._update_obs(obs)
+    memory.insert_first_obs(spatial_obs, non_spatial_obs)
+    
     
     with torch.no_grad(): 
         
@@ -245,21 +238,24 @@ def worker(remote, parent_remote, env, worker_id):
             
             #Check progress and report back 
             if done: 
-                memory.insert_epside_end( home_scored=info['touchdowns']>0, away_scored=info['opp_touchdowns']>0) 
+                
+                td_outcome = 0.5*(1 + info['touchdowns'] - info['opp_touchdowns'])
+                assert td_outcome in [0,0.5,1]
+                
+                memory.insert_epside_end( td_outcome=td_outcome ) 
                 
                 #handle lecture outcome  
                 obs = env.reset(lecture=lect)
-                memory.insert_first_obs(""" BLA BLA """)
-                
+                spatial_obs, non_spatial_obs = trainee._update_obs(obs)
+                memory.insert_first_obs(spatial_obs, non_spatial_obs)
+    
                 steps = 0
                 remote.send((memory, lect))
             
             # Updates from master process? 
             while remote.poll():  
                 command, data = remote.recv()
-                if command == 'swap opp':
-                    next_opp = data
-                elif command == 'swap trainee': 
+                if command == 'swap trainee': 
                     trainee = data
                 elif command == 'queue lecture': 
                     lecture.append(data)
