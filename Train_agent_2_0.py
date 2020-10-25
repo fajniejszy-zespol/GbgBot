@@ -24,6 +24,7 @@ learning_rate = 0.001
 gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
+prediction_loss_coeff = 0.25
 max_grad_norm = 0.05
 log_interval = 20
 save_interval = 500
@@ -160,11 +161,6 @@ def main():
         # OPTIMIZER
         optimizer = optim.RMSprop(ac_agent.parameters(), learning_rate)
 
-        
-        # Reset environments
-        obs = envs.reset(difficulty)
-        spatial_obs, non_spatial_obs # = update_obs(obs) # remove 
-
         # Create the agent 
         torch.save(ac_agent, "models/" + model_name)
         agent = A2CAgent("trainee", env_name=env_name, filename= "models/" + model_name )
@@ -177,46 +173,43 @@ def main():
 
         # Step until memory is filled, access memory through envs.memory 
         envs.step() 
+        memory = envs.memory 
         
-        
-        next_value = ac_agent(Variable(memory.spatial_obs[-1], requires_grad=False), Variable(memory.non_spatial_obs[-1], requires_grad=False))[0].data
-
-        # Compute returns - done in memory 
-        # memory.compute_returns(next_value, gamma)
-
         # ### Evaluate the actions taken ### 
-        spatial = Variable(memory.spatial_obs[:-1])
-        spatial = spatial.view(-1, *spatial_obs_space)
-        non_spatial = Variable(memory.non_spatial_obs[:-1])
-        non_spatial = non_spatial.view(-1, non_spatial.shape[-1])
-
+        spatial = Variable(memory.spatial_obs)
+        #spatial = spatial.view(-1, *spatial_obs_space)
+        non_spatial = Variable(memory.non_spatial_obs)
+        #non_spatial = non_spatial.view(-1, non_spatial.shape[-1]) 
+        
+        
         actions = Variable(torch.LongTensor(memory.actions.view(-1, 1)))
-        actions_mask = Variable(memory.action_masks[:-1])
+        actions_mask = Variable(memory.action_masks)
 
-        action_log_probs, values, dist_entropy = ac_agent.evaluate_actions(spatial, non_spatial, actions, actions_mask)
+        action_log_probs, values, dist_entropy, td_pred = ac_agent.evaluate_actions(spatial, non_spatial, actions, actions_mask)
 
         # ### Compute loss and back propagate ### 
-        values = values.view(steps_per_update, num_processes, 1)
-        action_log_probs = action_log_probs.view(steps_per_update, num_processes, 1)
+        #values = values.view(steps_per_update, num_processes, 1)
+        #action_log_probs = action_log_probs.view(steps_per_update, num_processes, 1)
 
-        advantages = Variable(memory.returns[:-1]) - values
+        advantages = Variable(memory.returns) - values
         value_loss = advantages.pow(2).mean()
+        
+        outcome_prediction_error = Variable(memory.td_outcome) - td_pred
+        prediction_loss = outcome_prediction_error.pow(2).mean() 
         
         action_loss = -(Variable(advantages.data) * action_log_probs).mean()
         
+        
+        
         optimizer.zero_grad()
 
-        total_loss = (value_loss * value_loss_coef + action_loss - dist_entropy * entropy_coef)
+        total_loss = (value_loss * value_loss_coef + prediction_loss * prediction_loss_coeff + action_loss - dist_entropy * entropy_coef)
         total_loss.backward()
 
         nn.utils.clip_grad_norm_(ac_agent.parameters(), max_grad_norm)
 
         optimizer.step()
         
-        # ### Insert last observation as first ### 
-        memory.non_spatial_obs[0].copy_(memory.non_spatial_obs[-1])
-        memory.spatial_obs[0].copy_(memory.spatial_obs[-1])
-
         # Updates
         all_updates += 1
         # Episodes
@@ -315,42 +308,9 @@ def main():
         #send updated agent to workers
         agent.policy = ac_agent 
         envs.update_trainee(agent) 
-        
-        
-        
+         
     torch.save(ac_agent, "models/" + model_name)
     envs.close()
-
-
-def update_obs(observations):
-    """
-    Takes the observation returned by the environment and transforms it to an numpy array that contains all of
-    the feature layers and non-spatial info
-    """
-    spatial_obs = []
-    non_spatial_obs = []
-
-    for obs in observations:
-        '''
-        for k, v in obs['board'].items():
-            print(k)
-            print(v)
-        '''
-        spatial_ob = np.stack(obs['board'].values())
-
-        state = list(obs['state'].values())
-        procedures = list(obs['procedures'].values())
-        actions = list(obs['available-action-types'].values())
-
-        non_spatial_ob = np.stack(state+procedures+actions)
-
-        # feature_layers = np.expand_dims(feature_layers, axis=0)
-        non_spatial_ob = np.expand_dims(non_spatial_ob, axis=0)
-
-        spatial_obs.append(spatial_ob)
-        non_spatial_obs.append(non_spatial_ob)
-
-    return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
 
 
 def make_env(worker_id):
