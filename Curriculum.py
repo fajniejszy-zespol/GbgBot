@@ -1,5 +1,5 @@
 import ffai
-from ffai.core.model import Square, Action, Agent 
+from ffai.core.model import Square, Action, Agent, D3, D6, D8, BBDie 
 from ffai.core.table import ActionType, Skill 
 import ffai.core.procedure as FFAI_procs
 import random 
@@ -8,18 +8,185 @@ from pdb import set_trace
 from copy import deepcopy 
 from collections import Iterable
 import numpy as np 
-#import ffai.ai.pathfinding as pf 
+from ffai.core.game import * 
+from ffai.core.load import *
+
 import scripted_bot 
 from ffai.ai.bots.random_bot import RandomBot
 
 from scipy.special import softmax
 
+HISTORY_SIZE = 200
+
+class Lecture: 
+    def __init__(self, name, max_level, delta_level = 0.1): 
+        self.name           = name 
+        self.level          = 0 
+        self.max_level      = max_level
+        self.delta_level    = delta_level
+        self.exceptions_thrown = 0
+        
+        assert delta_level > 0 
+
+    def increase_diff(self): 
+        self.level = min( self.max_level, self.level +self.delta_level )
+    def decrease_diff(self):
+        self.level = max(              0, self.level -self.delta_level )        
+    def increase_level(self): 
+        self.level += 1* (self.level < self.max_level)  
+    def decrease_level(self): 
+        self.level -= 1* (0 < self.level)  
+    
+    
+    def get_diff(self): 
+        return min(self.level, self.max_level) / self.max_level 
+    def get_level(self): 
+        return min( int(self.level), self.max_level) 
+        
+    def reset_game(self, config): 
+        """ 
+        :paran config: integer of pitch size, (currently 3,5,7,11)
+        :return: return a fully initialized game object, with opp_agent initialized
+        """ 
+        raise NotImplementedError("Must be overridden by subclass")
+    
+    def evaluate(self, game, drive_over): 
+        """
+        :param game: game object to be judged
+        :param drive_over: is set to True last time this function is called. 
+        :return: a LectureOutcome object  
+        """
+        raise NotImplementedError("Must be overridden by subclass")
+    def allowed_fail_rate(self): 
+        """
+        Not sure how to use this. TODO TBD 
+        """
+        return 0 
+    
+class LectureOutcome: 
+    def __init__(self, lecture, win, draw=None): 
+        
+        self.lect_type = type(lecture)
+        self.name = lecture.name 
+        self.steps = 0 
+        self.level = lecture.get_level() 
+        
+        if win:  
+            self.result = 1 
+        elif draw is not None and draw: 
+            self.result = 0 
+        else: 
+            self.result = -1  
+        
+class LectureHistory: 
+    def __init__(self, lecture): 
+        self.lecture = lecture
+        self.latest_hundred = np.zeros( (HISTORY_SIZE,1) )
+        #self.rewards        = np.zeros( (HISTORY_SIZE,1) )
+        self.latest_level   = np.zeros( (HISTORY_SIZE,1) )
+        self.index          = 0
+        self.episodes       = 0
+        self.steps          = 0 
+        self.max_acheived   = -1
+        self.history_filled = False 
+    
+    def log(self, outcome):
+        assert self.lecture.name == outcome.name 
+        assert type(self.lecture) == outcome.lect_type
+        i = self.index 
+        
+        self.latest_hundred[i] = outcome.result
+        self.latest_level[i] = outcome.level
+        self.episodes += 1 
+        self.steps += outcome.steps 
+        
+        self.index += 1
+        if self.index >= HISTORY_SIZE: 
+            self.history_filled = True 
+            self.index = 0 
+        
+
+    def report(self, with_name=False): 
+        
+        lvl         = str( self.lecture.get_level() )
+        max_lvl     = self.lecture.max_level
+        avg         = self.latest_hundred.mean() 
+        #prob        = self.lec_prob_soft[lec_index]
+        #reward      = self.rewards[lec_index,:].mean() 
+
+        s = f"ep={self.episodes}, steps={self.steps}, lvl= {lvl} ({self.max_acheived})/{max_lvl}), avg={avg}"
+        return s 
+         
+         
+        #s_log = "p={:.0f}, rewrd= {:.2f} ({:.2f}), rewrd/dt= {:.2f}".format(name, episodes, lvl, max_acheived, max_lvl, 100*avg, 100*prob, reward_fail,  reward_success, reward_delta)
+             
+    
+class Academy: 
+    
+    def __init__(self, lectures): 
+        self.lect_histo = [] 
+        self.add_lecture( lectures )
+        
+    def _update_probs(self): 
+        self.lec_prob = np.ones( (self.num_lects,)) / self.num_lects 
+        assert round(sum(self.lec_prob),3) == 1.0  
+            
+    def get_next_lecture(self):        
+        return np.random.choice( self.lect_histo, 1 , p = self.lec_prob_soft).lecture  
+        
+    def add_lecture(self, lectures): 
+        if type(lectures) != list:  
+            lectures = [lectures] 
+            
+        for l in lectures: 
+            self.lect_histo.append( LectureHistory(l) ) 
+        
+        self.num_lects = len(self.lect_histo)
+        self.lec_prob = np.zeros( (self.num_lects ,) )  
+        self._update_probs() 
+    
+        # Assert unique lectures
+        self.lect_names = [l.name for l in lectures]
+        for name in self.lect_names: 
+            assert self.lect_names.count(name) == 1 
+    
+        self._update_probs() 
+    
+    def log_training(self, outcome): 
+        name = outcome.name 
+        index = self.lect_names.index(name)
+        self.lect_histo[index].log(outcome)
+        
+        self._update_probs() 
+        
+    def report(self, filename=None): 
+        # render plots 
+        
+        
+        max_name_len = max( [len(l.lecture.name) for l in self.lect_histo])
+        
+        s=""
+        for l in self.lect_histo:
+                        
+            name = l.lecture.name 
+            extra_spaces = max_name_len - len(name)
+            
+            s += l.lecture.name + " "*extra_spaces
+            s += l.report() + "\n"
+            
+        return s
+            
 game_turn_memoized = {} 
-def get_empty_game_turn(config, turn, clear_board=True, hometeam="human", awayteam="human", away_agent=None ):
+def get_empty_game_turn(config="ff-11", turn=0, clear_board=True, hometeam="human", awayteam="human", away_agent=None ):
     
-    pitch_size = config.pitch_size  
+    if type(config) == str: 
+        config  = load_config(config)
+    config.competition_mode = False
+    config.fast_mode = True
     
-    key = f"{hometeam} {awayteam} {pitch_size} {turn)""
+    pitch_size = config.pitch_max 
+    
+    key = f"{hometeam} {awayteam} {pitch_size} {turn}"
     if key in game_turn_memoized:
         game = deepcopy(game_turn_memoized[key])
         
@@ -37,9 +204,11 @@ def get_empty_game_turn(config, turn, clear_board=True, hometeam="human", awayte
     size_suffix = f"{pitch_size}" if pitch_size != 11 else "" 
     home = load_team_by_filename(hometeam+size_suffix, ruleset, board_size=pitch_size)
     away = load_team_by_filename(awayteam+size_suffix, ruleset, board_size=pitch_size)
-    game = Game(seed, home, away, Agent("human1", human=True), Agent("human2", human=True) , config)
+    game = Game(1, home, away, Agent("human1", human=True), Agent("human2", human=True) , config)
     game.init()
     
+    random_agent = RandomBot("home")
+        
     if turn > 0: 
         game.step(Action(ActionType.START_GAME))
         game.step(Action(ActionType.HEADS))
@@ -48,7 +217,6 @@ def get_empty_game_turn(config, turn, clear_board=True, hometeam="human", awayte
         game.step(Action(ActionType.END_SETUP))
         game.step(Action(ActionType.SETUP_FORMATION_WEDGE))
         game.step(Action(ActionType.END_SETUP))
-        random_agent = RandomBot("home")
         while type(game.get_procedure()) is not Turn or game.is_quick_snap() or game.is_blitz():
             action = random_agent.act(game)
             game.step(action)
@@ -67,9 +235,7 @@ def get_empty_game_turn(config, turn, clear_board=True, hometeam="human", awayte
     game_turn_memoized[key] = deepcopy(game)
     
     return game
-
  
-    
 def get_home_players(game): 
     num = min(game.config.pitch_max, len(game.state.home_team.players) ) 
     return random.sample(game.state.home_team.players, num)
@@ -269,203 +435,6 @@ def swap_game(game):
     # game.get_ball().move_to( Square(ball_new_x, ball_y) )
     
     # assert game.get_ball().position.x ==  ball_new_x
+    pass 
     
-class Lecture: 
-    def __init__(self, name, max_level, delta_level = 0.1): 
-        self.name           = name 
-        self.level          = 0 
-        self.max_level      = max_level
-        self.delta_level    = delta_level
-        self.exceptions_thrown = 0
-        
-        assert delta_level > 0 
-
-    def increase_diff(self): 
-        self.level = min( self.max_level, self.level +self.delta_level )
-    def decrease_diff(self):
-        self.level = max(              0, self.level -self.delta_level )        
-    def get_diff(self): 
-        return min(self.level, self.max_level) / self.max_level 
-    def get_level(self): 
-        return min( int(self.level), self.max_level) 
-        
-    def reset_game(self, config): 
-        """ 
-        :paran config: integer of pitch size, (currently 3,5,7,11)
-        :return: return a fully initialized game object, with opp_agent initialized
-        """ 
-        raise NotImplementedError("Must be overridden by subclass")
-    
-    def evaluate(self, game, drive_over): 
-        """
-        :param game: game object to be judged
-        :param drive_over: is set to True last time this function is called. 
-        :return: a LectureOutcome object  
-        """
-        raise NotImplementedError("Must be overridden by subclass")
-    def allowed_fail_rate(self): 
-        """
-        Not sure how to use this. TODO TBD 
-        """
-        return 0 
-    
-class LectureOutcome: 
-    def __init__(self, lecture, win, draw=None): 
-        
-        if win:  
-            self.outcome = 1 
-        elif draw is not None and draw: 
-            self.outcome = 0 
-        else: 
-            self.outcome = -1  
-            
-        self.lect_type = type(lecture)
-
-        
-    
-class Academy: 
-    
-    def __init__(self, lectures, nbr_of_processes, ordinary_matches=0): 
-
-        self.nbr_of_processes = nbr_of_processes 
-        self.ordinary_matches = ordinary_matches 
-        
-        assert  ordinary_matches <= nbr_of_processes
-        assert  nbr_of_processes > 0 
-        
-        self.lectures       = lectures  
-        
-        self.lect_names = [l.name for l in lectures]
-        
-        for l in self.lectures: 
-            assert self.lect_names.count(l.name) == 1 
-            
-        self.history_size = 300    
-            
-        
-        self.len_lects = len(self.lectures) 
-        
-        #History variables 
-        self.latest_hundred = np.zeros( (self.len_lects, self.history_size) )
-        self.rewards        = np.zeros( (self.len_lects, self.history_size) )
-        self.latest_level   = np.zeros( (self.len_lects, self.history_size) )
-        self.indices        = np.zeros( (self.len_lects, ), dtype=int )
-        self.episodes       = np.zeros( (self.len_lects, ), dtype=int  )
-        self.max_acheived   = np.zeros( (self.len_lects, ) )
-        self.max_name_len = max( [len(l.name) for l in lectures] )
-        
-        self.history_filled = np.zeros( (self.len_lects, ), dtype=bool  )
-        
-        self.static_max_level = np.array( [l.max_level for l in self.lectures]  )
-        
-        
-        self.lec_prob = np.zeros( (self.len_lects ,) )  
-        self.lecture_pool = self.lectures
-        
-        self._update_probs() 
-    
-    def _update_probs(self): 
-     
-        
-        levels = np.array( [l.get_level() for l in self.lectures]  )
-        
-        #diff_term       =   0.03*(self.latest_level.max(axis=1) - self.latest_level.min(axis=1))
-        
-        low_progress    =  3 *  np.array([1-l.get_diff() for l in self.lectures])
-        forgetting_term  =  3*(self.max_acheived - levels) / self.static_max_level 
-        history_term =  4*np.ones( (self.len_lects, ) ) * (self.history_filled == False) 
-        
-        self.lec_prob =  forgetting_term + history_term + low_progress #+ diff_term
-        
-        self.lec_prob_soft = softmax( self.lec_prob) 
-        
-        # self.bonus_matches = 2*int(round(self.lec_prob.mean() -0.49)  ) 
-        
-        # bonus_min = -self.ordinary_matches +1 
-        # bonus_max = self.nbr_of_processes - self.ordinary_matches - 1
-        
-        self.bonus_matches = 0 #min(max(self.bonus_matches,bonus_min), bonus_max )    
-            
-    def get_next_lectures(self):        
-    
-        lecture_picks = self.nbr_of_processes - self.ordinary_matches - self.bonus_matches 
-    
-        lectures = np.random.choice( self.lecture_pool, lecture_picks , p = self.lec_prob_soft) 
-        
-        return list(lectures) + [None] * (self.ordinary_matches+self.bonus_matches)
-        
-    def add_lecture(self, lect): 
-        assert False 
-    
-    def log_training(self, data, reward): 
-        
-        name    = data[0]
-        level   = data[1]
-        outcome = data[2]
-        
-        lec_index = self.lect_names.index( name )
-        lect = self.lectures[ lec_index ]
-        
-        # increase difficulty 
-        if outcome == True and self.lectures[ lec_index ].get_level() <= level: 
-            self.lectures[ lec_index ].increase_diff() 
-        
-        # decrease difficulty
-        elif self.lectures[ lec_index ]. allowed_fail_rate() < random.random():
-            self.lectures[ lec_index ].decrease_diff()
-        
-        # else: unchanged difficulty  
-        
-        
-        #Logg result 
-        self.rewards[lec_index, self.indices[lec_index] ]           = reward 
-        self.latest_hundred[lec_index, self.indices[lec_index] ]    = outcome 
-        self.latest_level[lec_index, self.indices[lec_index] ]      = lect.level / lect.delta_level
-        self.indices[lec_index]                                     = (self.indices[lec_index]+1) % self.history_size
-        self.episodes[lec_index] += 1 
-        
-        self.max_acheived[lec_index] = max( self.max_acheived[lec_index], self.lectures[lec_index].get_level() * outcome )
-        
-        self.history_filled[lec_index] = self.history_filled[lec_index] or self.indices[lec_index]+10 >= self.history_size
-        
-        
-        self._update_probs() 
-        
-    def report_training(self, filename=None): 
-        # render plots 
-
-        
-        s=""
-        for l in self.lectures: 
-            lec_index = self.lect_names.index( l.name )
-            
-            extra_spaces = self.max_name_len - len(l.name)
-   #         s_temp = "{} - {:.4f} ({}/{})\n ".format(l.name, l.get_diff(), str(l.get_level()), str(l.max_level)  ) 
-            
-            name        = l.name + " "*extra_spaces
-            episodes    = self.episodes[lec_index]
-            #diff        =  l.get_diff()
-            #max_diff    = self.max[lec_index] 
-            lvl         = str( l.get_level() )
-            max_acheived= self.max_acheived[lec_index]
-            max_lvl     = l.max_level
-            avg         = self.latest_hundred[lec_index,:].mean() 
-            prob        = self.lec_prob_soft[lec_index]
-            reward      = self.rewards[lec_index,:].mean() 
-            
-            reward_success = self.rewards[lec_index, self.latest_hundred[lec_index] > 0.9 ].mean() 
-            reward_fail = self.rewards[lec_index, self.latest_hundred[lec_index] < 0.9 ].mean() 
-
-            
-            #exceptions  = l.exceptions_thrown
-            
-            i=self.indices[lec_index]
-            reward_flattened = np.concatenate( (self.rewards[lec_index, i:], self.rewards[lec_index, :i])) 
-            reward_delta = reward_flattened[ self.history_size//2: ].mean() - reward_flattened[ :self.history_size//2 ].mean() 
-            
-            
-            s_log = "{}, ep={:.0f}, lvl= {} ({:.0f})/{:.0f}, avg={:.0f}, p={:.0f}, rewrd= {:.2f} ({:.2f}), rewrd/dt= {:.2f}".format(name, episodes, lvl, max_acheived, max_lvl, 100*avg, 100*prob, reward_fail,  reward_success, reward_delta)
-            s += s_log + "\n"
-        return s
-            
 

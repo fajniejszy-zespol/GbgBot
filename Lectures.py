@@ -23,8 +23,11 @@ class GameAgainstRandom(Lecture):
         super().__init__("vs. Random", 10)
 
     def evaluate(self, game, drive_over): 
-        return game.get_home_in_lead() 
-
+        if drive_over:  
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)  
+        else: 
+            return None 
+            
     def reset_game(self, config): 
         return get_empty_game_turn(config, turn=0)
         

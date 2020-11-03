@@ -1,3 +1,5 @@
+import Curriculum as gc 
+
 
 class Memory(object):
     def __init__(self, steps_per_update, spatial_obs_shape, non_spatial_obs_shape, action_space):
@@ -246,7 +248,9 @@ def worker(remote, parent_remote, env, worker_id):
             if done: 
                 
                 td_outcome = 0.5*(1 + info['touchdowns'] - info['opp_touchdowns'])
-                assert td_outcome in [0,0.5,1]
+                assert td_outcome in [0, 0.5, 1]
+                assert type(lect_outcome) == gc.LectureOutcome 
+                lect_outcome.steps = steps 
                 
                 memory.insert_epside_end( td_outcome=td_outcome ) 
                 
