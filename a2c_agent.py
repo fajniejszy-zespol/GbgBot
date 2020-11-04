@@ -220,7 +220,7 @@ class A2CAgent(Agent):
         
         # Return action to the framework
         #return (action, actions, action_masks) 
-        return (action_object, actions, action_masks, value) 
+        return (action_object, actions, action_masks, value, spatial_obs, non_spatial_obs) 
 
     def cnn_used_for_latest_action(self): 
         return self.cnn_used 

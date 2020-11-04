@@ -58,36 +58,45 @@ class WorkerMemory(object):
         self.returns = torch.zeros(max_steps, 1)
         self.td_outcome = torch.zeros(max_steps, 1)
         
-        action_shape = 1
-        self.actions = torch.zeros(max_steps, action_shape)
-        self.actions = self.actions.long()
+        self.actions = torch.zeros(max_steps, 1).long() #action_shape = 1
         self.action_masks = torch.zeros(max_steps, action_space, dtype=torch.uint8)
  
     def cuda(self): 
         pass 
     
-    def insert_network_step(self, spatial_obs, non_spatial_obs, action, reward, action_masks): 
-        step = self.step 
+    def insert_first_obs(self, spatial_obs, non_spatial_obs): 
+        #consider clearing the variables 
+        self.step = 0 
+        self.looped = False 
         
-        self.spatial_obs[step].copy_(spatial_obs)
-        self.non_spatial_obs[step].copy_(spatial_obs)
-        self.actions[step].copy_(action)
-        self.reward[step].copy_(reward)
-        self.action_masks[step].copy_(action_masks)
+        self.spatial_obs[0].copy_(spatial_obs)
+        self.non_spatial_obs[0].copy_(non_spatial_obs)
+    
+    def insert_network_step(self, done, spatial_obs, non_spatial_obs, action, reward, action_masks): 
+        
+        self.actions[self.step].copy_(action)
+        self.reward[self.step].copy_(reward)
+        self.action_masks[self.step].copy_(action_masks)
         
         self.step += 1 
         if self.step == self.max_steps: 
             self.step = 0 
             self.looped = True 
         
-    def insert_scripted_step(self, spatial_obs, non_spatial_obs, reward): 
+        if not done: 
+            self.spatial_obs[self.step].copy_(spatial_obs)
+            self.non_spatial_obs[self.step].copy_(spatial_obs)
+
+    def insert_scripted_step(self, done, spatial_obs, non_spatial_obs, reward): 
         # observation overwrites the previously inserted observations 
-        self.spatial_obs[step].copy_(spatial_obs)
-        self.non_spatial_obs[step].copy_(spatial_obs)
+        if not done: 
+            self.spatial_obs[self.step].copy_(spatial_obs)
+            self.non_spatial_obs[self.step].copy_(spatial_obs)
         
         # reward is added to the previously inserted reward 
-        self.reward[step] += reward 
-         
+        prev_step = self.step - 1 if self.step > 0 else self.max_steps - 1
+        self.reward[prev_step] += reward 
+        
     def insert_epside_end(self, td_outcome): 
         
         self.td_outcome[:] = td_outcome
@@ -105,20 +114,9 @@ class WorkerMemory(object):
             for i in reversed(range(self.step+1 , self.max_steps-1)):
                 self.returns[i] = self.returns[step + 1] * gamma + self.rewards[i]
             
-         
-    
-    def insert_first_obs(self, spatial_obs, non_spatial_obs): 
-        self.step = 0 
-        self.looped = False 
-        
-        # Reset everything to zero to make sure. Remove when confirmed. 
-        # TODO 
-        
-        
-        self.spatial_obs[0].copy_(spatial_obs)
-        self.non_spatial_obs[0].copy_(non_spatial_obs)
-        
-                  
+    def get_steps_to_copy(self): 
+        return self.max_steps if self.looped else self.step
+                   
 class VecEnv():
     def __init__(self, envs, academy, starting_agent, ):
         """
@@ -217,42 +215,28 @@ def worker(remote, parent_remote, env, worker_id):
                     exit() 
                 
                 if not initialized: 
-                    initialized = not (trainee is None or len(lectures)==0) 
-            
-            
-            # Agent takes step 
+                    #initialized = not (trainee is None or len(lectures)==0) 
+                    initialized = trainee is not None and len(lectures) > 0 
+                    
+            # Agent takes step  and insert to memory 
             steps += 1
-            data_from_agent =  trainee.act(game=None, env=env, obs=obs)  
-            cnn_used_for_action = trainee.cnn_used_for_latest_action() 
-            
-            if cnn_used_for_action: 
-                (action, actions, action_masks, value) = data_from_agent
-                obs, reward, done, info = env.step(action)
-                spatial_obs, non_spatial_obs = trainee._update_obs(obs)
-                
-                reward_shaped = reward_function(env, info, shaped=True)
-                memory.insert_network_step(""" TODO BLA BLA """)
+            (action, action_idx, action_masks, value, spatial_obs, non_spatial_obs) =  trainee.act(game=None, env=env, obs=obs)  
+            obs, reward, done, info, lect_outcome = env.step(action)
+            reward_shaped = reward_function(env, info, shaped=True)
+                    
+            if actions is None or action_masks is None or value is None: 
+                memory.insert_scripted_step(done, spatial_obs, non_spatial_obs, reward_shaped)
             else: 
-                pos = data_from_agent.position 
-                action  = {
-                    'action-type': data_from_agent.action_type,
-                    'x': None if pos is None else pos.x,
-                    'y': None if pos is None else pos.y } 
-                obs, reward, done, info, lect_outcome = env.step(action)
-                spatial_obs, non_spatial_obs = trainee._update_obs(obs)
-                
-                reward_shaped = reward_function(env, info, shaped=True)
-                memory.insert_scripted_step(""" TODO BLA BLA """)
+                memory.insert_network_step(done, spatial_obs, non_spatial_obs, action_idx, reward_shaped, action_masks)
             
             #Check progress and report back 
             if done: 
-                
                 td_outcome = 0.5*(1 + info['touchdowns'] - info['opp_touchdowns'])
                 assert td_outcome in [0, 0.5, 1]
                 assert type(lect_outcome) == gc.LectureOutcome 
                 lect_outcome.steps = steps 
                 
-                memory.insert_epside_end( td_outcome=td_outcome ) 
+                memory.insert_epside_end( td_outcome ) 
                 
                 if len(lectures)>0: 
                     lect = lectures.pop() 
