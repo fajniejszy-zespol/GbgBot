@@ -132,7 +132,7 @@ class Academy:
         assert round(sum(self.lec_prob),3) == 1.0  
             
     def get_next_lecture(self):        
-        return np.random.choice( self.lect_histo, 1 , p = self.lec_prob_soft).lecture  
+        return np.random.choice( self.lect_histo, 1 , p = self.lec_prob)[0].lecture  
         
     def add_lecture(self, lectures): 
         if type(lectures) != list:  
