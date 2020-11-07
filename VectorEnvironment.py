@@ -1,8 +1,19 @@
 import Curriculum as gc 
+from multiprocessing import Process, Pipe 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from Train_agent_2_0 import reward_function 
+from time import sleep 
 
+worker_max_steps = 200 
 
 class Memory(object):
-    def __init__(self, steps_per_update, spatial_obs_shape, non_spatial_obs_shape, action_space):
+    def __init__(self, steps_per_update, env):
+        
+        spatial_obs_shape = env.get_spatial_obs_shape() 
+        non_spatial_obs_shape = env.get_non_spatial_obs_shape() 
+        action_space = env.get_action_shape()
         
         self.step = 0 
         self.max_steps = steps_per_update
@@ -32,22 +43,27 @@ class Memory(object):
         begin =  self.step
         end = self.step +  steps_to_copy
         
-        self.spatial_obs[step:end].copy_(worker_mem.spatial_obs[:steps_to_copy]) 
-        self.non_spatial_obs[step:end].copy_(worker_mem.non_spatial_obs[:steps_to_copy])  
-        self.rewards[step:end].copy_(worker_mem.rewards[:steps_to_copy]) 
-        self.returns[step:end].copy_(worker_mem.returns[:steps_to_copy]) 
-        self.td_outcome[step:end].copy_(worker_mem.td_outcome[:steps_to_copy]) 
+        self.spatial_obs[begin:end].copy_(worker_mem.spatial_obs[:steps_to_copy]) 
+        self.non_spatial_obs[begin:end].copy_(worker_mem.non_spatial_obs[:steps_to_copy])  
+        self.rewards[begin:end].copy_(worker_mem.rewards[:steps_to_copy]) 
+        self.returns[begin:end].copy_(worker_mem.returns[:steps_to_copy]) 
+        self.td_outcome[begin:end].copy_(worker_mem.td_outcome[:steps_to_copy]) 
         
-        self.actions[step:end].copy_(worker_mem.actions[:steps_to_copy]) 
-        self.action_masks[step:end].copy_(worker_mem.action_masks[:steps_to_copy]) 
+        self.actions[begin:end].copy_(worker_mem.actions[:steps_to_copy]) 
+        self.action_masks[begin:end].copy_(worker_mem.action_masks[:steps_to_copy]) 
 
         self.step += steps_to_copy
     
     def not_full(self): 
-        return 0.9*self.max_steps > self.steps 
+        return 0.9*self.max_steps > self.step
     
 class WorkerMemory(object): 
-    def __init__(self, max_steps, spatial_obs_shape, non_spatial_obs_shape, action_space):
+    def __init__(self, max_steps, env):
+        
+        spatial_obs_shape = env.get_spatial_obs_shape() 
+        non_spatial_obs_shape = env.get_non_spatial_obs_shape() 
+        action_space = env.get_action_shape()
+        
         self.max_steps = max_steps
         self.looped = False 
         self.step = 0 
@@ -74,8 +90,8 @@ class WorkerMemory(object):
     
     def insert_network_step(self, done, spatial_obs, non_spatial_obs, action, reward, action_masks): 
         
-        self.actions[self.step].copy_(action)
-        self.reward[self.step].copy_(reward)
+        self.actions[self.step] = action
+        self.rewards[self.step] = reward
         self.action_masks[self.step].copy_(action_masks)
         
         self.step += 1 
@@ -85,20 +101,20 @@ class WorkerMemory(object):
         
         if not done: 
             self.spatial_obs[self.step].copy_(spatial_obs)
-            self.non_spatial_obs[self.step].copy_(spatial_obs)
+            self.non_spatial_obs[self.step].copy_(non_spatial_obs)
 
     def insert_scripted_step(self, done, spatial_obs, non_spatial_obs, reward): 
         # observation overwrites the previously inserted observations 
         if not done: 
             self.spatial_obs[self.step].copy_(spatial_obs)
-            self.non_spatial_obs[self.step].copy_(spatial_obs)
+            self.non_spatial_obs[self.step].copy_(non_spatial_obs)
         
         # reward is added to the previously inserted reward 
         prev_step = self.step - 1 if self.step > 0 else self.max_steps - 1
-        self.reward[prev_step] += reward 
+        self.rewards[prev_step] += reward 
         
     def insert_epside_end(self, td_outcome): 
-        
+        gamma = 0.99 
         self.td_outcome[:] = td_outcome
         
         # Compute returns 
@@ -107,18 +123,18 @@ class WorkerMemory(object):
             
             self.returns[ self.step - 1 ] = self.rewards[self.step -1 ]
             for i in reversed(range(self.step-1)):
-                self.returns[i] = self.returns[step + 1] * gamma + self.rewards[i]
+                self.returns[i] = self.returns[i + 1] * gamma + self.rewards[i]
             
         if self.looped: 
             self.returns[-1] = gamma * self.returns[0] + self.rewards[-1] 
             for i in reversed(range(self.step+1 , self.max_steps-1)):
-                self.returns[i] = self.returns[step + 1] * gamma + self.rewards[i]
+                self.returns[i] = self.returns[i + 1] * gamma + self.rewards[i]
             
     def get_steps_to_copy(self): 
         return self.max_steps if self.looped else self.step
                    
 class VecEnv():
-    def __init__(self, envs, academy, starting_agent, ):
+    def __init__(self, envs, academy, starting_agent, memory_size):
         """
         envs: list of FFAI environments to run in subprocesses
         """
@@ -126,34 +142,33 @@ class VecEnv():
         self.academy = academy 
         nenvs = len(envs)
         self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nenvs)])
-
-        self.ps = [Process(target=worker, args=(work_remote, remote, env, envs.index(env)))
-                   for (work_remote, remote, env) in zip(self.work_remotes, self.remotes, envs)]
-
+        lectures = [academy.get_next_lecture() for i in range(nenvs) ] 
+        
+        self.ps = [Process(target=worker, args=(work_remote, remote, env, envs.index(env), [lect], starting_agent))
+                   for (work_remote, remote, env, lect) in zip(self.work_remotes, self.remotes, envs, lectures)]
+        
         for p in self.ps:
             p.daemon = True  # If the main process crashes, we should not cause things to hang
             p.start()
         for remote in self.work_remotes:
             remote.close()
 
-        
-        lectures = self.academy.get_lectures( len(self.remotes)) 
-        for remote, lecture in zip(self.remotes, lectures:
+        for remote in self.remotes:
+            lecture = self.academy.get_next_lecture() 
             remote.send(('queue lecture', lecture))
-            remote.send(('swap opp', starting_agent))
+            #remote.send(('swap opp', starting_agent))
             remote.send(('swap trainee', starting_agent))
         
-        steps_per_update = 2000
-        self.memory = Memory(steps_per_update, spatial_obs_shape, (1, non_spatial_obs_shape), action_space)
+        self.memory = Memory(memory_size, envs[0] )
         
     def step(self):
         
-        while memory.not_full(): 
+        while self.memory.not_full(): 
             for remote in self.remotes: 
                 if remote.poll(): 
                     data = remote.recv()
-                    self.memory.insert_data(data["memory"])
-                    self.academy.report(data("lecture outcome")) 
+                    self.memory.insert_worker_memory( data[0] )
+                    self.academy.report( data[1] ) 
                    
                     #TODO: queue another lecture? 
             
@@ -181,50 +196,45 @@ class VecEnv():
     def num_envs(self):
         return len(self.remotes)
 
-def worker(remote, parent_remote, env, worker_id):
+def worker(remote, parent_remote, env, worker_id, lectures, trainee):
     parent_remote.close()
 
-    trainee = None 
-    lectures = [] 
+    assert len(lectures)>0 
     worker_running = True 
-    initialized = False 
+    steps=0
+    
+    reset_steps = 2000 
     
     with torch.no_grad(): 
-        memory = WorkerMemory( """ TODO BLA BLA BLA """)
         
         lect = lectures.pop() 
         obs = env.reset(lect)
-        
         spatial_obs, non_spatial_obs = trainee._update_obs(obs)
+        memory = WorkerMemory( worker_max_steps, env )
         memory.insert_first_obs(spatial_obs, non_spatial_obs)
-        
+                        
         while worker_running:
-            
             # Updates from master process? 
-            while remote.poll() or not initialized:  
+            while remote.poll():  
                 command, data = remote.recv()
                 if command == 'swap trainee': 
                     trainee = data
                 elif command == 'queue lecture': 
-                    lecture.append(data)
+                    lectures.append(data)
                 elif command == 'close':
                     worker_running = False 
                     break 
                 else: 
-                    raise Exception("Unknown command to worker")
+                    raise Exception(f"Unknown command to worker: {command}")
                     exit() 
                 
-                if not initialized: 
-                    #initialized = not (trainee is None or len(lectures)==0) 
-                    initialized = trainee is not None and len(lectures) > 0 
-                    
             # Agent takes step  and insert to memory 
             steps += 1
             (action, action_idx, action_masks, value, spatial_obs, non_spatial_obs) =  trainee.act(game=None, env=env, obs=obs)  
             obs, reward, done, info, lect_outcome = env.step(action)
             reward_shaped = reward_function(env, info, shaped=True)
                     
-            if actions is None or action_masks is None or value is None: 
+            if action_idx is None or action_masks is None or value is None: 
                 memory.insert_scripted_step(done, spatial_obs, non_spatial_obs, reward_shaped)
             else: 
                 memory.insert_network_step(done, spatial_obs, non_spatial_obs, action_idx, reward_shaped, action_masks)
@@ -237,7 +247,8 @@ def worker(remote, parent_remote, env, worker_id):
                 lect_outcome.steps = steps 
                 
                 memory.insert_epside_end( td_outcome ) 
-                
+                remote.send((memory, lect_outcome))
+            
                 if len(lectures)>0: 
                     lect = lectures.pop() 
                 
@@ -246,8 +257,7 @@ def worker(remote, parent_remote, env, worker_id):
                 memory.insert_first_obs(spatial_obs, non_spatial_obs)
     
                 steps = 0
-                remote.send((memory, lect_outcome))
-            
+                
             if steps >= reset_steps:
                 # If we  get stuck or something - reset the environment
                 print("Max. number of steps exceeded! Consider increasing the number.")
