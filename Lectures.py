@@ -1,20 +1,6 @@
-import ffai
-from ffai.core.model import Square, Action, Agent 
-from ffai.core.table import ActionType, Skill 
-import ffai.core.procedure as FFAI_procs
-import random 
-from random import randint 
-from pdb import set_trace
-from copy import deepcopy 
-from collections import Iterable
-import numpy as np 
-#import ffai.ai.pathfinding as pf 
-import scripted_bot 
-from ffai.ai.bots.random_bot import RandomBot
+#import ffai.ai.pathfinding as pf
 
-from scipy.special import softmax
-
-from Curriculum import * 
+from Curriculum import *
 
 
 # ### CONVERTED LECTURES ### 
