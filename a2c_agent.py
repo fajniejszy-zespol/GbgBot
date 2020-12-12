@@ -148,7 +148,7 @@ class A2CAgent(Agent):
             flipped[name] = np.flip(layer, 1)
         return flipped
 
-    def act(self, game, env=None, obs=None):
+    def act(self, game, env=None, obs=None, updated_obs = None):
 
         '''todo - Update code to get observations that are torch tensors. 
                 - because they are either way converted for the policy optimization. 
