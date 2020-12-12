@@ -14,9 +14,12 @@ import sys
 from GbgAgent import A2CAgent
 import ffai
 import random
-from pdb import set_trace
+
+
 
 import Curriculum as gc
+import Lectures
+from VectorEnvironment import
 from GbgAgent import CNNPolicy, update_obs
 
 debug_thread = False 
@@ -34,7 +37,7 @@ reset_steps = 20000  # The environment is reset after this many steps it gets st
 #env_name = "FFAI-7-v2"
 
 env_name = "FFAI-v2"
-num_processes = 8
+num_processes = 2
 match_processes = 2
 num_steps = 10000000
 steps_per_update = 60 
@@ -42,28 +45,7 @@ steps_per_update = 60
 log_interval = 30 
 save_interval = log_interval*3
 
-planned_lectures = [#gc.Scoring(), 
-                    gc.PassAndScore(handoff=True), 
-                    gc.PickupAndScore(), 
-                    gc.PreventScore(home_defence=False), 
-                    gc.PreventScore(home_defence=True)
-                    #gc.PickupKickoffBall(),
-                    #gc.BlockBallCarrier(),
-                    #gc.CrowdSurf(), 
-                    #gc.ChooseBlockDie()
-                    ]
-        
-
-#Test setup 
-test_setup = False     
-if test_setup : 
-    env_name = "FFAI-v2"
-    num_processes = 4
-    match_processes = 2
-    num_steps = 1000000
-    steps_per_update = 20
-
-    log_interval = 1
+planned_lectures = [Lectures.GameAgainstRandom() ]
 
 ppcg = False 
 
@@ -144,44 +126,6 @@ rewards_opp = {
 ball_progression_reward = 0.005
 
 
-class Memory(object):
-    def __init__(self, steps_per_update, num_processes, spatial_obs_shape, non_spatial_obs_shape, action_space):
-        self.spatial_obs = torch.zeros(steps_per_update + 1, num_processes, *spatial_obs_shape)
-        self.non_spatial_obs = torch.zeros(steps_per_update + 1, num_processes, *non_spatial_obs_shape)
-        self.rewards = torch.zeros(steps_per_update, num_processes, 1)
-        self.value_predictions = torch.zeros(steps_per_update + 1, num_processes, 1)
-        self.returns = torch.zeros(steps_per_update + 1, num_processes, 1)
-        action_shape = 1
-        self.actions = torch.zeros(steps_per_update, num_processes, action_shape)
-        self.actions = self.actions.long()
-        self.masks = torch.ones(steps_per_update + 1, num_processes, 1)
-        self.action_masks = torch.zeros(steps_per_update + 1, num_processes, action_space, dtype=torch.uint8)
-
-    def cuda(self):
-        self.spatial_obs = self.spatial_obs.cuda()
-        self.non_spatial_obs = self.non_spatial_obs.cuda()
-        self.rewards = self.rewards.cuda()
-        self.value_predictions = self.value_predictions.cuda()
-        self.returns = self.returns.cuda()
-        self.actions = self.actions.cuda()
-        self.masks = self.masks.cuda()
-        self.action_masks = self.action_masks.cuda()
-
-    def insert(self, step, spatial_obs, non_spatial_obs, action, value_pred, reward, mask, action_masks):
-        self.spatial_obs[step + 1].copy_(spatial_obs)
-        self.non_spatial_obs[step + 1].copy_(non_spatial_obs)
-        self.actions[step].copy_(action)
-        self.value_predictions[step].copy_(value_pred)
-        self.rewards[step].copy_(reward)
-        self.masks[step].copy_(mask)
-        self.action_masks[step].copy_(action_masks)
-
-    def compute_returns(self, next_value, gamma):
-        self.returns[-1] = next_value
-        for step in reversed(range(self.rewards.size(0))):
-            self.returns[step] = self.returns[step + 1] * gamma * self.masks[step] + self.rewards[step]
-
-    
 def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, debug=False, prev_pos_reward=[None,None] ):
     r = 0
     for outcome in env.get_outcomes():
@@ -370,169 +314,12 @@ def reward_function(env, info, shaped=False, obs=None, prev_super_shaped=None, d
     
     return r, super_shaped, prev_pos_reward
 
-def worker(remote, parent_remote, env, worker_id):
-    parent_remote.close()
 
-    steps = 0
-    tds = 0
-    tds_opp = 0
-    next_opp = ffai.make_bot('almost-random')
-
-    prev_super_shaped = None
-    prev_pos_reward = [None, None]
-    
-    while True:
-
-        if debug_thread: print(f"worker {worker_id} - stuck on receive")
-                        
-        command, data = remote.recv()
-        if debug_thread: print(f"worker {worker_id} - after receive: '{command}'")
-        if command == 'step':
-            steps += 1
-            action, dif, lecture = data[0], data[1], data[2]
-            
-            
-           # s = "in worker, action is " + str(action)
-            #print(s) 
-            
-
-            obs, reward, done, info = env.step(action)
-            tds_scored = info['touchdowns'] - tds
-            tds = info['touchdowns']
-            tds_opp_scored = info['opp_touchdowns'] - tds_opp
-            tds_opp = info['opp_touchdowns']
-            reward_shaped, prev_super_shaped, prev_pos_reward = reward_function(env, info, shaped=True, obs=obs, prev_super_shaped = prev_super_shaped, prev_pos_reward = prev_pos_reward)
-            ball_carrier = env.game.get_ball_carrier()
-            # PPCG
-            if dif < 1.0 and env.lecture is None:
-                if ball_carrier and ball_carrier.team == env.game.state.home_team:
-                    extra_endzone_squares = int((1.0 - dif) * 25.0)
-                    distance_to_endzone = ball_carrier.position.x - 1
-                    if distance_to_endzone <= extra_endzone_squares:
-                        #reward_shaped += rewards_own[OutcomeType.TOUCHDOWN]
-                        env.game.state.stack.push(Touchdown(env.game, ball_carrier))
-            if done or steps >= reset_steps:
-                # If we  get stuck or something - reset the environment
-                if steps >= reset_steps:
-                    print("Max. number of steps exceeded! Consider increasing the number.")
-                done = True
-                env.opp_actor = next_opp
-                obs = env.reset(lecture)
-                steps = 0
-                prev_pos_reward = [None, None]
-                prev_super_shaped = None 
-                tds = 0
-                tds_opp = 0
-            
-            if debug_thread: print(f"worker {worker_id} - stuck on send") 
-            remote.send((obs, reward, reward_shaped, tds_scored, tds_opp_scored, done, info))
-            if debug_thread: print(f"worker {worker_id}  - stuck somewhere else")
-
-        elif command == 'reset':
-            dif, lecture = data[0], data[1]
-            steps = 0
-            tds = 0
-            tds_opp = 0
-            env.opp_actor = next_opp
-            prev_super_shaped = None 
-            prev_pos_reward = [None, None]
-            obs = env.reset(lecture)
-            # set_difficulty(env, dif)
-            remote.send(obs)
-        elif command == 'render':
-            #env.render()
-            pass 
-        elif command == 'swap':
-            next_opp = data
-        elif command == 'close':
-            break
-
-            
-class VecEnv():
-    def __init__(self, envs):
-        """
-        envs: list of FFAI environments to run in subprocesses
-        """
-        self.closed = False
-        nenvs = len(envs)
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nenvs)])
-
-        self.ps = [Process(target=worker, args=(work_remote, remote, env, envs.index(env)))
-                   for (work_remote, remote, env) in zip(self.work_remotes, self.remotes, envs)]
-
-        for p in self.ps:
-            p.daemon = True  # If the main process crashes, we should not cause things to hang
-            p.start()
-        for remote in self.work_remotes:
-            remote.close()
-
-    def step(self, actions, difficulty=1.0, lectures = None ):
-        cumul_rewards = None
-        cumul_shaped_rewards = None
-        cumul_tds_scored = None
-        cumul_tds_opp_scored = None
-        cumul_dones = None
-        #set_trace() 
-        if lectures == None: 
-            lectures = [None] * len(self.remotes)
-        
-        for remote, action, lecture in zip(self.remotes, actions, lectures):
-            remote.send(('step', [action, difficulty, lecture]))
-
-        results = [remote.recv() for remote in self.remotes]
-        
-        obs, rews, rews_shaped, tds, tds_opp, dones, infos = zip(*results)
-        if cumul_rewards is None:
-            cumul_rewards = np.stack(rews)
-            cumul_shaped_rewards = np.stack(rews_shaped)
-            cumul_tds_scored = np.stack(tds)
-            cumul_tds_opp_scored = np.stack(tds_opp)
-        else:
-            cumul_rewards += np.stack(rews)
-            cumul_shaped_rewards += np.stack(rews_shaped)
-            cumul_tds_scored += np.stack(tds)
-            cumul_tds_opp_scored += np.stack(tds_opp)
-        if cumul_dones is None:
-            cumul_dones = np.stack(dones)
-        else:
-            cumul_dones |= np.stack(dones)
-        return np.stack(obs), cumul_rewards, cumul_shaped_rewards, cumul_tds_scored, cumul_tds_opp_scored, cumul_dones, infos
-
-    def reset(self, difficulty=1.0, lectures = None ):
-        if lectures == None: lectures = [None for _ in range(len(self.remotes))]
-        
-        for remote, lecture in zip(self.remotes, lectures):
-            remote.send(('reset', [difficulty, lecture] ))
-        return np.stack([remote.recv() for remote in self.remotes])
-
-    def render(self):
-        for remote in self.remotes:
-            remote.send(('render', None))
-
-    def swap(self, agent):
-        for remote in self.remotes:
-            remote.send(('swap', agent))
-
-    def close(self):
-        if self.closed:
-            return
-
-        for remote in self.remotes:
-            remote.send(('close', None))
-        for p in self.ps:
-            p.join()
-        self.closed = True
-
-    @property
-    def num_envs(self):
-        return len(self.remotes)
-
-        
 def main():
     if True: #GbgBot config 
         #academy = gc.Academy( [gc.CrowdSurf(), gc.BlockBallCarrier(), gc.PickupAndScore(), gc.Scoring(), gc.HandoffAndScore()] )
-        academy = gc.Academy( planned_lectures , num_processes, match_processes )
-        lectures = academy.get_next_lectures( ) 
+        academy = gc.Academy(planned_lectures)
+        lectures = academy.get_next_lecture( )
         
     es = [make_env(i) for i in range(num_processes)]
     
@@ -571,7 +358,6 @@ def main():
                 assert 1 in mask
             except: 
                 print("assert 1 in mask")
-                pdb.set_trace()
                 exit() 
             #if ob["procedures"]["PlaceBall"]>0: 
             #    print("tracing placeball")

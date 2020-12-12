@@ -3,22 +3,19 @@ import gym
 from ffai import FFAIEnv
 from torch.autograd import Variable
 import torch.optim as optim
-from multiprocessing import Process, Pipe
 from ffai.ai.layers import *
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import matplotlib.pyplot as plt
-import sys
 from a2c_agent import A2CAgent, CNNPolicy
-import ffai
-import random
 
-from pytest import set_trace 
+from VectorEnvironment import VecEnv
+from Curriculum import Academy
+import Lectures
 
 # Training configuration
 num_steps = 1000000
-num_processes = 8
+num_processes = 1
 steps_per_update = 20 
 learning_rate = 0.001
 gamma = 0.99
@@ -66,49 +63,11 @@ ensure_dir("logs/")
 ensure_dir("models/")
 ensure_dir("plots/")
 
-# --- Reward function ---
-rewards_own = {
-    OutcomeType.TOUCHDOWN: 1,
-    OutcomeType.CATCH: 0.1,
-    OutcomeType.INTERCEPTION: 0.2,
-    OutcomeType.SUCCESSFUL_PICKUP: 0.1,
-    OutcomeType.FUMBLE: -0.1,
-    OutcomeType.KNOCKED_DOWN: -0.1,
-    OutcomeType.KNOCKED_OUT: -0.2,
-    OutcomeType.CASUALTY: -0.5
-}
-rewards_opp = {
-    OutcomeType.TOUCHDOWN: -1,
-    OutcomeType.CATCH: -0.1,
-    OutcomeType.INTERCEPTION: -0.2,
-    OutcomeType.SUCCESSFUL_PICKUP: -0.1,
-    OutcomeType.FUMBLE: 0.1,
-    OutcomeType.KNOCKED_DOWN: 0.1,
-    OutcomeType.KNOCKED_OUT: 0.2,
-    OutcomeType.CASUALTY: 0.5
-}
-ball_progression_reward = 0.005
 
 
 
 
-def reward_function(env, info, shaped=False):
-    r = 0
-    for outcome in env.get_outcomes():
-        if not shaped and outcome.outcome_type != OutcomeType.TOUCHDOWN:
-            continue
-        team = None
-        if outcome.player is not None:
-            team = outcome.player.team
-        elif outcome.team is not None:
-            team = outcome.team
-        if team == env.own_team and outcome.outcome_type in rewards_own:
-            r += rewards_own[outcome.outcome_type]
-        if team == env.opp_team and outcome.outcome_type in rewards_opp:
-            r += rewards_opp[outcome.outcome_type]
-    if info['ball_progression'] > 0:
-        r += info['ball_progression'] * ball_progression_reward
-    return r
+
 
 def calc_network_shape(env): 
     spatial_obs_space = env.observation_space.spaces['board'].shape
@@ -136,7 +95,7 @@ def calc_network_shape(env):
 def main():
     if True: 
         es = [make_env(i) for i in range(num_processes)]
-        envs = VecEnv([es[i] for i in range(num_processes)])
+
 
         spatial_obs_space = es[0].observation_space.spaces['board'].shape
         board_dim = (spatial_obs_space[1], spatial_obs_space[2])
@@ -166,7 +125,8 @@ def main():
         agent = A2CAgent("trainee", env_name=env_name, filename= "models/" + model_name )
         
         # send agent to environments 
-        envs.update_trainee(agent) 
+        envs = VecEnv([es[i] for i in range(num_processes)], Academy([Lectures.GameAgainstRandom()]), agent, 400 )
+        envs.update_trainee(agent)
     
     
     while all_steps < num_steps:
