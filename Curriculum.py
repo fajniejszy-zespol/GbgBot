@@ -206,7 +206,7 @@ def get_empty_game_turn(config="ff-11", turn=0, clear_board=True, hometeam="huma
 
     ruleset = load_rule_set(config.ruleset)
 
-    size_suffix = f"{pitch_size}" if pitch_size != 11 else ""
+    size_suffix = f"-{pitch_size}" if pitch_size != 11 else ""
     home = load_team_by_filename(hometeam + size_suffix, ruleset, board_size=pitch_size)
     away = load_team_by_filename(awayteam + size_suffix, ruleset, board_size=pitch_size)
     game = Game(1, home, away, Agent("human1", human=True), Agent("human2", human=True), config)

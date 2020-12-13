@@ -1,4 +1,3 @@
-import os
 import gym
 from ffai import FFAIEnv
 from torch.autograd import Variable
@@ -6,7 +5,6 @@ import torch.optim as optim
 from ffai.ai.layers import *
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
 from a2c_agent import A2CAgent, CNNPolicy
 
 from VectorEnvironment import VecEnv
@@ -30,21 +28,7 @@ assert not ppcg
 
 # Environment
 env_name = "FFAI-1-v2"
-#env_name = "FFAI-3-v2"
-#num_steps = 10000000 # Increase training time
-#log_interval = 100
-#env_name = "FFAI-5-v2"
-#num_steps = 100000000 # Increase training time
-#log_interval = 1000
-#save_interval = 5000
-# env_name = "FFAI-v2"
 reset_steps = 5000  # The environment is reset after this many steps it gets stuck
-
-# Self-play
-selfplay = False  # Use this to enable/disable self-play
-selfplay_window = 1
-selfplay_save_steps = int(num_steps / 10)
-selfplay_swap_steps = selfplay_save_steps
 
 # Architecture
 num_hidden_nodes = 128
@@ -59,14 +43,10 @@ def ensure_dir(file_path):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
+
 ensure_dir("logs/")
 ensure_dir("models/")
 ensure_dir("plots/")
-
-
-
-
-
 
 
 def calc_network_shape(env): 
@@ -127,8 +107,9 @@ def main():
         # send agent to environments 
         envs = VecEnv([es[i] for i in range(num_processes)], Academy([Lectures.GameAgainstRandom()]), agent, 400 )
         envs.update_trainee(agent)
-    
-    
+
+    all_steps = 0
+    num_steps = 12345
     while all_steps < num_steps:
 
         # Step until memory is filled, access memory through envs.memory 
@@ -169,101 +150,14 @@ def main():
         nn.utils.clip_grad_norm_(ac_agent.parameters(), max_grad_norm)
 
         optimizer.step()
-        
-        # Updates
-        all_updates += 1
-        # Episodes
-        all_episodes += episodes
-        episodes = 0
-        # Steps
-        all_steps += num_processes * steps_per_update
+
+        num_steps += 10 #TODO, number of observations-action pairs used for this update
 
         # Self-play save
-        if selfplay and all_steps >= selfplay_next_save:
-            selfplay_next_save = max(all_steps+1, selfplay_next_save+selfplay_save_steps)
-            model_path = f"models/{model_name}_selfplay_{selfplay_models}"
-            print(f"Saving {model_path}")
-            torch.save(ac_agent, model_path)
-            selfplay_models += 1
-            
-            # TODO: add lecture of this agent. 
+        if all_steps % 100 == 0:
+            pass # TODO: add lecture of this agent.
 
-        
-        # Save
-        if all_updates % save_interval == 0 and len(episode_rewards) >= num_processes:
-            # Save to files
-            with open(log_filename, "a") as myfile:
-                myfile.write(log_to_file)
-
-        # Logging
-        if all_updates % log_interval == 0 and len(episode_rewards) >= num_processes:
-            td_rate = np.mean(episode_tds)
-            td_rate_opp = np.mean(episode_tds_opp)
-            episode_tds.clear()
-            episode_tds_opp.clear()
-            mean_reward = np.mean(episode_rewards)
-            episode_rewards.clear()
-            win_rate = np.mean(wins)
-            wins.clear()
-            #mean_value_loss = np.mean(value_losses)
-            #mean_policy_loss = np.mean(policy_losses)    
-            
-            log_updates.append(all_updates)
-            log_episode.append(all_episodes)
-            log_steps.append(all_steps)
-            log_win_rate.append(win_rate)
-            log_td_rate.append(td_rate)
-            log_td_rate_opp.append(td_rate_opp)
-            log_mean_reward.append(mean_reward)
-            log_difficulty.append(difficulty)
-
-            log = "Updates: {}, Episodes: {}, Timesteps: {}, Win rate: {:.2f}, TD rate: {:.2f}, TD rate opp: {:.2f}, Mean reward: {:.3f}, Difficulty: {:.2f}" \
-                .format(all_updates, all_episodes, all_steps, win_rate, td_rate, td_rate_opp, mean_reward, difficulty)
-
-            log_to_file = "{}, {}, {}, {}, {}, {}, {}\n" \
-                .format(all_updates, all_episodes, all_steps, win_rate, td_rate, td_rate_opp, mean_reward, difficulty)
-
-            print(log)
-
-            episodes = 0
-            value_losses.clear()
-            policy_losses.clear()
-
-            # Save model
             torch.save(ac_agent, "models/" + model_name)
-            
-            # plot
-            n = 3
-            if ppcg:
-                n += 1
-            fig, axs = plt.subplots(1, n, figsize=(4*n, 5))
-            axs[0].ticklabel_format(axis="x", style="sci", scilimits=(0,0))
-            axs[0].plot(log_steps, log_mean_reward)
-            axs[0].set_title('Reward')
-            #axs[0].set_ylim(bottom=0.0)
-            axs[0].set_xlim(left=0)
-            axs[1].ticklabel_format(axis="x", style="sci", scilimits=(0,0))
-            axs[1].plot(log_steps, log_td_rate, label="Learner")
-            axs[1].set_title('TD/Episode')
-            axs[1].set_ylim(bottom=0.0)
-            axs[1].set_xlim(left=0)
-            if selfplay:
-                axs[1].ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
-                axs[1].plot(log_steps, log_td_rate_opp, color="red", label="Opponent")
-            axs[2].ticklabel_format(axis="x", style="sci", scilimits=(0,0))
-            axs[2].plot(log_steps, log_win_rate)
-            axs[2].set_title('Win rate')            
-            axs[2].set_yticks(np.arange(0, 1.001, step=0.1))
-            axs[2].set_xlim(left=0)
-            if ppcg:
-                axs[3].ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
-                axs[3].plot(log_steps, log_difficulty)
-                axs[3].set_title('Difficulty')
-                axs[3].set_yticks(np.arange(0, 1.001, step=0.1))
-                axs[3].set_xlim(left=0)
-            fig.tight_layout()
-            fig.savefig(f"plots/{model_name}{'_selfplay' if selfplay else ''}.png")
-            plt.close('all')
 
         #send updated agent to workers
         agent.policy = ac_agent 

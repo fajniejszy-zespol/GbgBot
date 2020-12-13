@@ -2,10 +2,9 @@
 from ffai.core.load import *
 from ffai.ai.bots.random_bot import *
 
-from Train_agent_2_0 import reward_function 
 import Lectures as gc
 from Curriculum import Academy, LectureOutcome 
-from VectorEnvironment import VecEnv, Memory, WorkerMemory 
+from VectorEnvironment import VecEnv, Memory, WorkerMemory, reward_function
 
 import itertools as it 
 import gym 
@@ -124,10 +123,17 @@ def test_memories():
             w_mem.insert_first_obs(spatial_obs, non_spatial_obs)
             
             
-def test_vec_env(): 
+def test_vec_env_small_board():
     N = 3
-    envs = [gym.make("FFAI-v2") for i in range(N)]
+    envs = [gym.make("FFAI-1-v2") for i in range(N)]
     vec_env = VecEnv(envs, Academy(lectures_to_test), A2c_agent_tester(envs[0]), 500 )
     vec_env.step() 
     vec_env.close() 
+
+def test_vec_env_fullsize_board():
+    N = 3
+    envs = [gym.make("FFAI-v2") for i in range(N)]
+    vec_env = VecEnv(envs, Academy(lectures_to_test), A2c_agent_tester(envs[0]), 500 )
+    vec_env.step()
+    vec_env.close()
 

@@ -276,7 +276,7 @@ class A2CAgent(Agent):
         actions = list(obs['available-action-types'].values())
 
         non_spatial_obs = np.stack(state+procedures+actions)
-        non_spatial_obs = np.expand_dims(non_spatial_ob, axis=0)
+        non_spatial_obs = np.expand_dims(non_spatial_obs, axis=0)
 
         
         return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
