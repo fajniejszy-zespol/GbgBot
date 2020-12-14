@@ -1,4 +1,6 @@
-import Curriculum as gc 
+from pytest import set_trace
+
+import Curriculum as gc
 from multiprocessing import Process, Pipe 
 import torch
 import torch.nn as nn
@@ -197,12 +199,6 @@ class VecEnv():
         for remote in self.work_remotes:
             remote.close()
 
-        for remote in self.remotes:
-            lecture = self.academy.get_next_lecture() 
-            remote.send(('queue lecture', lecture))
-            #remote.send(('swap opp', starting_agent))
-            remote.send(('swap trainee', starting_agent))
-        
         self.memory = Memory(memory_size, envs[0] )
         
     def step(self):
@@ -222,6 +218,7 @@ class VecEnv():
     
     
     def update_trainee(self, agent): 
+
         for remote in self.remotes:
             remote.send(('swap trainee', agent))
         
@@ -260,6 +257,7 @@ def worker(remote, parent_remote, env, worker_id, lectures, trainee):
         while worker_running:
             # Updates from master process? 
             while remote.poll():  
+                print("poll successfull!! ")
                 command, data = remote.recv()
                 if command == 'swap trainee': 
                     trainee = data

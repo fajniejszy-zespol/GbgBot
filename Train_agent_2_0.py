@@ -1,5 +1,6 @@
 import gym
 from ffai import FFAIEnv
+from pytest import set_trace
 from torch.autograd import Variable
 import torch.optim as optim
 from ffai.ai.layers import *
@@ -13,7 +14,7 @@ import Lectures
 
 # Training configuration
 num_steps = 1000000
-num_processes = 1
+num_processes = 3
 steps_per_update = 20 
 learning_rate = 0.001
 gamma = 0.99
@@ -23,11 +24,10 @@ prediction_loss_coeff = 0.25
 max_grad_norm = 0.05
 log_interval = 20
 save_interval = 500
-ppcg = False
-assert not ppcg 
+
 
 # Environment
-env_name = "FFAI-1-v2"
+env_name = "FFAI-3-v2"
 reset_steps = 5000  # The environment is reset after this many steps it gets stuck
 
 # Architecture
@@ -44,9 +44,7 @@ def ensure_dir(file_path):
         os.makedirs(directory)
 
 
-ensure_dir("logs/")
-ensure_dir("models/")
-ensure_dir("plots/")
+
 
 
 def calc_network_shape(env): 
@@ -69,46 +67,40 @@ def calc_network_shape(env):
              'board_dim': board_dim, 
              'num_spat_action_types': num_spatial_action_types, 
              'num_spat_actions': num_spatial_actions, 
-             'num_non_spat_actions': num_non_spatial_action_types}
+             'num_non_spat_actions': num_non_spatial_action_types,
+             'action_space': action_space}
     return shape 
     
 def main():
-    if True: 
-        es = [make_env(i) for i in range(num_processes)]
+    ensure_dir("logs/")
+    ensure_dir("models/")
+    ensure_dir("plots/")
 
+    # Clear log file
+    try:
+        os.remove(log_filename)
+    except OSError:
+        pass
 
-        spatial_obs_space = es[0].observation_space.spaces['board'].shape
-        board_dim = (spatial_obs_space[1], spatial_obs_space[2])
-        board_squares = spatial_obs_space[1] * spatial_obs_space[2]
+    es = [make_env(i) for i in range(num_processes)]
+    shape = calc_network_shape(es[0])
 
-        non_spatial_obs_space = es[0].observation_space.spaces['state'].shape[0] + es[0].observation_space.spaces['procedures'].shape[0] + es[0].observation_space.spaces['available-action-types'].shape[0]
-        non_spatial_action_types = FFAIEnv.simple_action_types + FFAIEnv.defensive_formation_action_types + FFAIEnv.offensive_formation_action_types
-        num_non_spatial_action_types = len(non_spatial_action_types)
-        spatial_action_types = FFAIEnv.positional_action_types
-        num_spatial_action_types = len(spatial_action_types)
-        num_spatial_actions = num_spatial_action_types * spatial_obs_space[1] * spatial_obs_space[2]
-        action_space = num_non_spatial_action_types + num_spatial_actions
+    # MODEL
+    ac_agent = CNNPolicy( shape['spat_obs'], shape['non_spat_obs'], hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=shape['action_space'])
 
-        
-        # Clear log file
-        try: os.remove(log_filename)
-        except OSError: pass
+    # OPTIMIZER
+    optimizer = optim.RMSprop(ac_agent.parameters(), learning_rate)
 
-        # MODEL
-        ac_agent = CNNPolicy(spatial_obs_space, non_spatial_obs_space, hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=action_space)
+    # Create the agent
+    torch.save(ac_agent, "models/" + model_name)
+    agent = A2CAgent("trainee", env_name=env_name, filename= "models/" + model_name )
 
-        # OPTIMIZER
-        optimizer = optim.RMSprop(ac_agent.parameters(), learning_rate)
+    # send agent to environments
+    envs = VecEnv([es[i] for i in range(num_processes)], Academy([Lectures.GameAgainstRandom()]), agent, 400 )
 
-        # Create the agent 
-        torch.save(ac_agent, "models/" + model_name)
-        agent = A2CAgent("trainee", env_name=env_name, filename= "models/" + model_name )
-        
-        # send agent to environments 
-        envs = VecEnv([es[i] for i in range(num_processes)], Academy([Lectures.GameAgainstRandom()]), agent, 400 )
-        envs.update_trainee(agent)
 
     all_steps = 0
+    updates = 0
     num_steps = 12345
     while all_steps < num_steps:
 
@@ -152,6 +144,7 @@ def main():
         optimizer.step()
 
         num_steps += 10 #TODO, number of observations-action pairs used for this update
+        updates += 1
 
         # Self-play save
         if all_steps % 100 == 0:
@@ -161,11 +154,14 @@ def main():
 
         #send updated agent to workers
         agent.policy = ac_agent 
-        envs.update_trainee(agent) 
+
+
+        print(f"sending agent {updates} ")
+        envs.update_trainee(agent)
          
     torch.save(ac_agent, "models/" + model_name)
     envs.close()
-
+    print("quitting!")
 
 def make_env(worker_id):
     print("Initializing worker", worker_id, "...")

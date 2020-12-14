@@ -1,6 +1,7 @@
 import os
 import gym
 from ffai import FFAIEnv
+from pytest import set_trace
 from torch.autograd import Variable
 import torch.optim as optim
 from multiprocessing import Process, Pipe
@@ -92,8 +93,8 @@ class CNNPolicy(nn.Module):
 
     def evaluate_actions(self, spatial_inputs, non_spatial_input, actions, actions_mask):
         value, policy, pred = self(spatial_inputs, non_spatial_input)
-        actions_mask = actions_mask.view(-1, 1, actions_mask.shape[2]).squeeze().bool()
-        policy[~actions_mask] = float('-inf')
+        #actions_mask = actions_mask.view(-1, 1, actions_mask.shape[1]).squeeze().bool()
+        policy[~actions_mask.bool()] = float('-inf')
         log_probs = F.log_softmax(policy, dim=1)
         probs = F.softmax(policy, dim=1)
         action_log_probs = log_probs.gather(1, actions)
@@ -102,6 +103,7 @@ class CNNPolicy(nn.Module):
         return action_log_probs, value, dist_entropy, pred
 
     def get_action_probs(self, spatial_input, non_spatial_input, action_mask):
+
         values, actions, pred = self(spatial_input, non_spatial_input)
         # Masking step: Inspired by: http://juditacs.github.io/2018/12/27/masked-attention.html
         if action_mask is not None:
@@ -153,12 +155,10 @@ class A2CAgent(Agent):
         '''todo - Update code to get observations that are torch tensors. 
                 - because they are either way converted for the policy optimization. 
         '''
-    
+
+
         self.cnn_used = False 
-        if self.end_setup:
-            self.end_setup = False
-            return ffai.Action(ActionType.END_SETUP)
-        
+
         # Get observation
         if game is None: 
             game = env.game 
@@ -167,11 +167,7 @@ class A2CAgent(Agent):
                 # TODO - call update_obs here 
             else: 
                 observation = obs 
-                
-            
-            
-            
-        else: 
+        else:
             self.env.game = game
             observation = self.env.get_observation()
 
@@ -179,18 +175,26 @@ class A2CAgent(Agent):
         if not self.is_home:
             observation['board'] = self._flip(observation['board'])
 
-        obs = [observation]
         spatial_obs, non_spatial_obs = self._update_obs(obs)
 
         action_masks = self._compute_action_masks(obs)
         action_masks = torch.tensor(action_masks, dtype=torch.bool)
-        
-        
-        
+
+        # SCRIPTED BEHAVIOR HANDLED HERE!!!
+        if self.end_setup:
+            self.end_setup = False
+            self.cnn_used = True
+            action_object = {
+                'action-type': ActionType.END_SETUP,
+                'x': None,
+                'y': None}
+            return (action_object, None, action_masks, None, spatial_obs, non_spatial_obs)
+
+
         values, actions = self.policy.act(
-            Variable(spatial_obs),
-            Variable(non_spatial_obs),
-            Variable(action_masks))
+            Variable(spatial_obs.unsqueeze(0)),
+            Variable(non_spatial_obs.unsqueeze(0)),
+            Variable(action_masks.unsqueeze(0)))
 
         values.detach() 
         # Create action from output
@@ -228,29 +232,23 @@ class A2CAgent(Agent):
     def end_game(self, game):
         pass
 
-    def _compute_action_masks(self, observations):
-        masks = []
-        m = False
-        for ob in observations:
-            mask = np.zeros(self.action_space)
-            i = 0
-            for action_type in self.non_spatial_action_types:
-                mask[i] = ob['available-action-types'][action_type.name]
-                i += 1
-            for action_type in self.spatial_action_types:
-                if ob['available-action-types'][action_type.name] == 0:
-                    mask[i:i+self.board_squares] = 0
-                elif ob['available-action-types'][action_type.name] == 1:
-                    position_mask = ob['board'][f"{action_type.name.replace('_', ' ').lower()} positions"]
-                    position_mask_flatten = np.reshape(position_mask, (1, self.board_squares))
-                    for j in range(self.board_squares):
-                        mask[i + j] = position_mask_flatten[0][j]
-                i += self.board_squares
-            assert 1 in mask
-            if m:
-                print(mask)
-            masks.append(mask)
-        return masks
+    def _compute_action_masks(self, ob):
+        mask = np.zeros(self.action_space)
+        i = 0
+        for action_type in self.non_spatial_action_types:
+            mask[i] = ob['available-action-types'][action_type.name]
+            i += 1
+        for action_type in self.spatial_action_types:
+            if ob['available-action-types'][action_type.name] == 0:
+                mask[i:i+self.board_squares] = 0
+            elif ob['available-action-types'][action_type.name] == 1:
+                position_mask = ob['board'][f"{action_type.name.replace('_', ' ').lower()} positions"]
+                position_mask_flatten = np.reshape(position_mask, (1, self.board_squares))
+                for j in range(self.board_squares):
+                    mask[i + j] = position_mask_flatten[0][j]
+            i += self.board_squares
+        assert 1 in mask
+        return mask
 
     def _compute_action(self, action_idx):
         if action_idx < len(self.non_spatial_action_types):
@@ -268,7 +266,9 @@ class A2CAgent(Agent):
         Takes the observation returned by the environment and transforms it to an numpy array that contains all of
         the feature layers and non-spatial info.
         """
-        
+
+
+
         spatial_obs = np.stack(obs['board'].values())
 
         state = list(obs['state'].values())

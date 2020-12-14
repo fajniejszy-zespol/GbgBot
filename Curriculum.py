@@ -11,7 +11,6 @@ import numpy as np
 from ffai.core.game import *
 from ffai.core.load import *
 
-import scripted_bot
 from ffai.ai.bots.random_bot import RandomBot
 
 from scipy.special import softmax
