@@ -27,7 +27,7 @@ save_interval = 500
 
 
 # Environment
-env_name = "FFAI-3-v2"
+env_name = "FFAI-1-v2"
 reset_steps = 5000  # The environment is reset after this many steps it gets stuck
 
 # Architecture
@@ -101,9 +101,9 @@ def main():
 
     all_steps = 0
     updates = 0
-    num_steps = 120
+    num_steps = 300
     while all_steps < num_steps:
-
+        envs.memory.step = 0 #TODO: This is naughty!
         # Step until memory is filled, access memory through envs.memory 
         envs.step() 
         memory = envs.memory 
@@ -157,7 +157,9 @@ def main():
 
         print(f"sending agent {updates} ")
         envs.update_trainee(agent)
-         
+        report = envs.academy.report()
+        print(report)
+
     #torch.save(ac_agent, "models/" + model_name)
     print("closing workers!")
 

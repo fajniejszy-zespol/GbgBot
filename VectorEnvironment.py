@@ -79,6 +79,9 @@ class Memory(object):
     def cuda(self):
         pass
 
+    def clear_memory(self):
+        pass #TODO
+
     def insert_worker_memory(self, worker_mem):
         steps_to_copy = worker_mem.get_steps_to_copy()
 
@@ -209,9 +212,11 @@ class VecEnv():
         while self.memory.not_full():
             data = self.results_queue.get()   #Blocking call
             self.memory.insert_worker_memory(data[0])
-            self.academy.report(data[1])
+            self.academy.log_training(data[1])
 
-            # TODO: queue another lecture?
+            if self.lecture_queue.empty():
+                for _ in range(5):
+                    self.lecture_queue.put( self.academy.get_next_lecture() )
 
         return True
 
@@ -288,8 +293,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 memory.insert_epside_end(td_outcome)
                 results_queue.put((memory, lect_outcome))
 
-                if not lecture_queue.empty():
-                    lecture = lecture_queue.get()
+                lecture = lecture_queue.get() # Blocking call
 
                 obs = env.reset(lecture=lecture)
                 spatial_obs, non_spatial_obs = trainee._update_obs(obs)

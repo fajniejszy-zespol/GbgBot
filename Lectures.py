@@ -9,8 +9,8 @@ class GameAgainstRandom(Lecture):
         super().__init__("vs. Random", 10)
 
     def evaluate(self, game, drive_over): 
-        if drive_over:  
-            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)  
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
         else: 
             return None 
             

@@ -160,7 +160,6 @@ class Academy:
         name = outcome.name
         index = self.lect_names.index(name)
         self.lect_histo[index].log(outcome)
-
         self._update_probs()
 
     def report(self, filename=None):
@@ -173,7 +172,7 @@ class Academy:
             name = l.lecture.name
             extra_spaces = max_name_len - len(name)
 
-            s += l.lecture.name + " " * extra_spaces
+            s += l.lecture.name +": "+ " " * extra_spaces
             s += l.report() + "\n"
 
         return s
