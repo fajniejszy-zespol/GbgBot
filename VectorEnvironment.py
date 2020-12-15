@@ -227,6 +227,11 @@ class VecEnv():
 
         for ps_msg in self.ps_message:
             ps_msg.put(('close', None))
+            ps_msg.close()
+
+        self.lecture_queue.close()
+        self.results_queue.close()
+
         for p in self.ps:
             p.join()
         self.closed = True
@@ -252,12 +257,11 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
         while worker_running:
 
             # Updates from master process?
-            while not msg_queue.empty():
+            if not msg_queue.empty():
                 command, data = msg_queue.get()
                 if command == 'swap trainee':
                     trainee = data
                 elif command == 'close':
-                    worker_running = False
                     break
                 else:
                     raise Exception(f"Unknown command to worker: {command}")
@@ -282,10 +286,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 lect_outcome.steps = steps
 
                 memory.insert_epside_end(td_outcome)
-
-                print(f"Worker {worker_id} - on step {steps} - sending")
                 results_queue.put((memory, lect_outcome))
-                print(f"Worker {worker_id} - on step {steps} - send complete")
 
                 if not lecture_queue.empty():
                     lecture = lecture_queue.get()
@@ -304,3 +305,11 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 memory.insert_first_obs(spatial_obs, non_spatial_obs)
 
                 steps = 0
+
+    msg_queue.close()
+    msg_queue.join_thread()
+
+    results_queue.cancel_join_thread()
+    lecture_queue.cancel_join_thread()
+
+    print(f"Worker {worker_id} - Quitting!")

@@ -101,7 +101,7 @@ def main():
 
     all_steps = 0
     updates = 0
-    num_steps = 12345
+    num_steps = 120
     while all_steps < num_steps:
 
         # Step until memory is filled, access memory through envs.memory 
@@ -143,25 +143,26 @@ def main():
 
         optimizer.step()
 
-        num_steps += 10 #TODO, number of observations-action pairs used for this update
+        all_steps += 10 #TODO, number of observations-action pairs used for this update
         updates += 1
 
         # Self-play save
-        if all_steps % 100 == 0:
-            pass # TODO: add lecture of this agent.
+        #if all_steps % 100 == 0:
+        #    pass # TODO: add lecture of this agent.
 
-            torch.save(ac_agent, "models/" + model_name)
+        #    torch.save(ac_agent, "models/" + model_name)
 
         #send updated agent to workers
         agent.policy = ac_agent 
 
-
         print(f"sending agent {updates} ")
         envs.update_trainee(agent)
          
-    torch.save(ac_agent, "models/" + model_name)
+    #torch.save(ac_agent, "models/" + model_name)
+    print("closing workers!")
+
     envs.close()
-    print("quitting!")
+    print("main() quit!")
 
 def make_env(worker_id):
     print("Initializing worker", worker_id, "...")
