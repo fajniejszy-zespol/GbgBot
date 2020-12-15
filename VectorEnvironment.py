@@ -1,7 +1,8 @@
+
 from pytest import set_trace
 
 import Curriculum as gc
-from multiprocessing import Process, Pipe
+from multiprocessing import Process, Pipe, Queue
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -188,46 +189,44 @@ class VecEnv():
         self.closed = False
         self.academy = academy
         nenvs = len(envs)
-        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nenvs)])
         lectures = [academy.get_next_lecture() for i in range(nenvs)]
 
-        self.ps = [Process(target=worker, args=(work_remote, remote, env, envs.index(env), [lect], starting_agent))
-                   for (work_remote, remote, env, lect) in zip(self.work_remotes, self.remotes, envs, lectures)]
+        self.results_queue = Queue()
+        self.lecture_queue = Queue()
+        self.ps_message = [Queue() for _ in range(nenvs)]
+
+        self.ps = [Process(target=worker, args=(self.results_queue, self.lecture_queue, msg_queue, env, envs.index(env), lect, starting_agent))
+                   for (msg_queue, env, lect) in zip(self.ps_message, envs, lectures)]
 
         for p in self.ps:
             p.daemon = True  # If the main process crashes, we should not cause things to hang
             p.start()
-        for remote in self.work_remotes:
-            remote.close()
 
         self.memory = Memory(memory_size, envs[0])
 
     def step(self):
 
         while self.memory.not_full():
-            for remote in self.remotes:
-                if remote.poll():
-                    data = remote.recv()
-                    self.memory.insert_worker_memory(data[0])
-                    self.academy.report(data[1])
+            data = self.results_queue.get()   #Blocking call
+            self.memory.insert_worker_memory(data[0])
+            self.academy.report(data[1])
 
-                    # TODO: queue another lecture?
-
-            sleep(0.01)
+            # TODO: queue another lecture?
 
         return True
 
     def update_trainee(self, agent):
 
-        for remote in self.remotes:
-            remote.send(('swap trainee', agent))
+        for ps_msg in self.ps_message:
+            # Todo: check that queue is empty, otherwise process is very slow.
+            ps_msg.put(('swap trainee', agent))
 
     def close(self):
         if self.closed:
             return
 
-        for remote in self.remotes:
-            remote.send(('close', None))
+        for ps_msg in self.ps_message:
+            ps_msg.put(('close', None))
         for p in self.ps:
             p.join()
         self.closed = True
@@ -237,19 +236,15 @@ class VecEnv():
         return len(self.remotes)
 
 
-def worker(remote, parent_remote, env, worker_id, lectures, trainee):
-    parent_remote.close()
+def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, trainee):
 
-    assert len(lectures) > 0
     worker_running = True
     steps = 0
-
     reset_steps = 2000
 
     with torch.no_grad():
 
-        lect = lectures.pop()
-        obs = env.reset(lect)
+        obs = env.reset(lecture)
         spatial_obs, non_spatial_obs = trainee._update_obs(obs)
         memory = WorkerMemory(worker_max_steps, env)
         memory.insert_first_obs(spatial_obs, non_spatial_obs)
@@ -257,12 +252,10 @@ def worker(remote, parent_remote, env, worker_id, lectures, trainee):
         while worker_running:
 
             # Updates from master process?
-            while remote.poll():
-                command, data = remote.recv()
+            while not msg_queue.empty():
+                command, data = msg_queue.get()
                 if command == 'swap trainee':
                     trainee = data
-                elif command == 'queue lecture':
-                    lectures.append(data)
                 elif command == 'close':
                     worker_running = False
                     break
@@ -291,13 +284,13 @@ def worker(remote, parent_remote, env, worker_id, lectures, trainee):
                 memory.insert_epside_end(td_outcome)
 
                 print(f"Worker {worker_id} - on step {steps} - sending")
-                remote.send((memory, lect_outcome))
+                results_queue.put((memory, lect_outcome))
                 print(f"Worker {worker_id} - on step {steps} - send complete")
 
-                if len(lectures) > 0:
-                    lect = lectures.pop()
+                if not lecture_queue.empty():
+                    lecture = lecture_queue.get()
 
-                obs = env.reset(lecture=lect)
+                obs = env.reset(lecture=lecture)
                 spatial_obs, non_spatial_obs = trainee._update_obs(obs)
                 memory.insert_first_obs(spatial_obs, non_spatial_obs)
 
@@ -306,7 +299,7 @@ def worker(remote, parent_remote, env, worker_id, lectures, trainee):
             if steps >= reset_steps:
                 # If we  get stuck or something - reset the environment
                 print("Max. number of steps exceeded! Consider increasing the number.")
-                obs = env.reset(lecture=lect)
+                obs = env.reset(lecture=lecture)
                 spatial_obs, non_spatial_obs = trainee._update_obs(obs)
                 memory.insert_first_obs(spatial_obs, non_spatial_obs)
 
