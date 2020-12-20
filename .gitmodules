@@ -1,0 +1,3 @@
+[submodule "ffai"]
+	path = ffai
+	url = https://github.com/mrbermell/ffai
