@@ -1,6 +1,7 @@
 
 from ffai.core.load import *
 from ffai.ai.bots.random_bot import *
+from pytest import set_trace
 
 import Lectures as gc
 from Curriculum import Academy, LectureOutcome 
@@ -69,17 +70,27 @@ class A2c_agent_tester(Agent):
     
         return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
         
-lectures_to_test = [gc.GameAgainstRandom()]  
+lectures_to_test = [gc.GameAgainstRandom(), gc.Scoring() ]
 
 def test_all_lectures(): 
-    configs = ["ff-11", "ff-7", "ff-5", "ff-3", "ff-1"]
-    for lect, config in it.product(lectures_to_test, configs): 
-        
-        while lect.get_level() < lect.max_level:   
-            g = lect.reset_game(config) 
-            assert g.home_agent.human 
-            assert not g.away_agent.human 
-            
+    configs = ["FFAI-11-v2", "FFAI-7-v2", "FFAI-5-v2"]
+    for lect, config in it.product(lectures_to_test, configs):
+
+        env = gym.make(config)
+
+        while lect.get_level() < lect.max_level:
+            env.reset(lecture=lect)
+
+            try:
+                assert env.game.home_agent.human
+                assert not env.game.away_agent.human
+                assert env.actor != env.opp_actor
+
+                assert env.game.state.home_team != env.game.state.away_team
+
+                assert env.own_team != env.opp_team
+            except:
+                set_trace()
             lect.increase_level() 
             
 def test_academy(): 
@@ -91,49 +102,4 @@ def test_academy():
             school.log_training(outcome)
     
     s = school.report() 
-
-def test_memories(): 
-    env = gym.make("FFAI-v2") 
-    ac = Academy(lectures_to_test)
-    obs = env.reset(ac.get_next_lecture() ) 
-    ag = A2c_agent_tester(env)
-    spatial_obs, non_spatial_obs = ag._update_obs(obs)
-    
-    mem = Memory(300, env)
-    w_mem = WorkerMemory(200, env)
-    
-    w_mem.insert_first_obs(spatial_obs, non_spatial_obs)
-    
-    while mem.not_full(): 
-        (action, action_idx, action_masks, value, spatial_obs, non_spatial_obs) =  ag.act(game=None, env=env, obs=obs)  
-        obs, reward, done, info, lect_outcome = env.step(action)
-        reward_shaped = reward_function(env, info, shaped=True)
-        
-        if action_idx is None or action_masks is None or value is None: 
-            w_mem.insert_scripted_step(done, spatial_obs, non_spatial_obs, reward_shaped)
-        else: 
-            w_mem.insert_network_step(done, spatial_obs, non_spatial_obs, action_idx, reward_shaped, action_masks)
-            
-        if done: 
-            w_mem.insert_epside_end( 0.5 ) 
-            mem.insert_worker_memory( w_mem )
-            
-            obs = env.reset( ac.get_next_lecture() )
-            spatial_obs, non_spatial_obs = ag._update_obs(obs)
-            w_mem.insert_first_obs(spatial_obs, non_spatial_obs)
-            
-            
-def test_vec_env_small_board():
-    N = 3
-    envs = [gym.make("FFAI-1-v2") for i in range(N)]
-    vec_env = VecEnv(envs, Academy(lectures_to_test), A2c_agent_tester(envs[0]), 500 )
-    vec_env.step() 
-    vec_env.close() 
-
-def test_vec_env_fullsize_board():
-    N = 3
-    envs = [gym.make("FFAI-v2") for i in range(N)]
-    vec_env = VecEnv(envs, Academy(lectures_to_test), A2c_agent_tester(envs[0]), 500 )
-    vec_env.step()
-    vec_env.close()
 

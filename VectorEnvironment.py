@@ -14,25 +14,57 @@ from time import sleep
 worker_max_steps = 200
 
 # --- Reward function ---
+# --- Reward function ---
 rewards_own = {
-    OutcomeType.TOUCHDOWN: 1,
+    # Scoring
+    OutcomeType.TOUCHDOWN: 3,
+
+    # Other
+    # OutcomeType.REROLL_USED:        -0.05, #to discourage unnecessary re-rolling
+    # OutcomeType.FAILED_GFI:         -0.1,
+
+    # Ball handling
     OutcomeType.CATCH: 0.1,
-    OutcomeType.INTERCEPTION: 0.2,
-    OutcomeType.SUCCESSFUL_PICKUP: 0.1,
-    OutcomeType.FUMBLE: -0.1,
-    OutcomeType.KNOCKED_DOWN: -0.1,
+    OutcomeType.FAILED_CATCH: -0.1,
+
+    OutcomeType.SUCCESSFUL_PICKUP: 0.3,
+    # OutcomeType.FAILED_PICKUP:      -0.1,
+    OutcomeType.FUMBLE: -0.3,
+
+    # OutcomeType.INACCURATE_PASS:   -0.2,
+    # OutcomeType.INTERCEPTION:       0.2,
+
+    # Fighting
+    OutcomeType.KNOCKED_DOWN: -0.1,  # always reported when knocked down. Add Stun/KO/cas after
+    OutcomeType.STUNNED: -0.1,
     OutcomeType.KNOCKED_OUT: -0.2,
-    OutcomeType.CASUALTY: -0.5
+    OutcomeType.CASUALTY: -0.5,
+    OutcomeType.PLAYER_EJECTED: -0.5,
+    OutcomeType.PUSHED_INTO_CROWD: -0.25,
+
 }
 rewards_opp = {
-    OutcomeType.TOUCHDOWN: -1,
-    OutcomeType.CATCH: -0.1,
-    OutcomeType.INTERCEPTION: -0.2,
-    OutcomeType.SUCCESSFUL_PICKUP: -0.1,
-    OutcomeType.FUMBLE: 0.1,
-    OutcomeType.KNOCKED_DOWN: 0.1,
+    # Scoring
+    OutcomeType.TOUCHDOWN: -3,
+
+    # Ball handling
+    # OutcomeType.CATCH:             -0.0,
+    # OutcomeType.INTERCEPTION:      -0.2,
+    OutcomeType.SUCCESSFUL_PICKUP: -0.2,
+    OutcomeType.FUMBLE: 0.5,  # 0.1,   #PROBLEM: prefers to pick both down over push even without block skill !!
+    OutcomeType.FAILED_PICKUP: 0.3,
+    OutcomeType.FAILED_CATCH: 0.1,
+    #  OutcomeType.INACCURATE_PASS:    0.1,
+    OutcomeType.TOUCHBACK: -0.4,
+
+    # Fighting
+    OutcomeType.KNOCKED_DOWN: 0.1,  # always reported when knocked down. Add Stun/KO/cas after
+    OutcomeType.STUNNED: 0.1,
     OutcomeType.KNOCKED_OUT: 0.2,
-    OutcomeType.CASUALTY: 0.5
+    OutcomeType.CASUALTY: 0.5,
+    OutcomeType.PUSHED_INTO_CROWD: 0.25,
+    OutcomeType.PLAYER_EJECTED: 0.5,
+
 }
 ball_progression_reward = 0.005
 
@@ -40,19 +72,24 @@ ball_progression_reward = 0.005
 def reward_function(env, info, shaped=False):
     r = 0
     for outcome in env.get_outcomes():
+
         if not shaped and outcome.outcome_type != OutcomeType.TOUCHDOWN:
             continue
+
         team = None
         if outcome.player is not None:
             team = outcome.player.team
         elif outcome.team is not None:
             team = outcome.team
+
         if team == env.own_team and outcome.outcome_type in rewards_own:
             r += rewards_own[outcome.outcome_type]
         if team == env.opp_team and outcome.outcome_type in rewards_opp:
             r += rewards_opp[outcome.outcome_type]
+
     if info['ball_progression'] > 0:
         r += info['ball_progression'] * ball_progression_reward
+
     return r
 
 
@@ -293,8 +330,11 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 memory.insert_epside_end(td_outcome)
                 results_queue.put((memory, lect_outcome))
 
-                lecture = lecture_queue.get() # Blocking call
-
+                try:
+                    lecture = lecture_queue.get(timeout=10) # Blocking call
+                except:
+                    worker_running = False
+                    break
                 obs = env.reset(lecture=lecture)
                 spatial_obs, non_spatial_obs = trainee._update_obs(obs)
                 memory.insert_first_obs(spatial_obs, non_spatial_obs)
@@ -310,9 +350,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
 
                 steps = 0
 
-    msg_queue.close()
-    msg_queue.join_thread()
-
+    msg_queue.cancel_join_thread()
     results_queue.cancel_join_thread()
     lecture_queue.cancel_join_thread()
 

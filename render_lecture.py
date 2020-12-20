@@ -13,9 +13,9 @@ import Lectures as gc
 
 
 # Lecture to render. 
-lecture = gc.GameAgainstRandom() 
+lecture = gc.Scoring()
 
-env =  gym.make('FFAI-11-v2')
+env =  gym.make('FFAI-5-v2')
 
 
 def get_random_action(env): 

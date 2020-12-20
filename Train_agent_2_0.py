@@ -13,22 +13,18 @@ from Curriculum import Academy
 import Lectures
 
 # Training configuration
-num_steps = 1000000
-num_processes = 3
-steps_per_update = 20 
+max_updates = 20
+num_processes = 8
 learning_rate = 0.001
 gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
-prediction_loss_coeff = 0.25
+prediction_loss_coeff = 0.0
 max_grad_norm = 0.05
-log_interval = 20
-save_interval = 500
-
 
 # Environment
-env_name = "FFAI-1-v2"
-reset_steps = 5000  # The environment is reset after this many steps it gets stuck
+env_name = "FFAI-5-v2"
+active_lectures = [ Lectures.Scoring(), Lectures.GameAgainstRandom()]
 
 # Architecture
 num_hidden_nodes = 128
@@ -42,10 +38,6 @@ def ensure_dir(file_path):
     directory = os.path.dirname(file_path)
     if not os.path.exists(directory):
         os.makedirs(directory)
-
-
-
-
 
 def calc_network_shape(env): 
     spatial_obs_space = env.observation_space.spaces['board'].shape
@@ -96,13 +88,15 @@ def main():
     agent = A2CAgent("trainee", env_name=env_name, filename= "models/" + model_name )
 
     # send agent to environments
-    envs = VecEnv([es[i] for i in range(num_processes)], Academy([Lectures.GameAgainstRandom()]), agent, 400 )
+    academy = Academy(active_lectures)
+    envs = VecEnv([es[i] for i in range(num_processes)], academy, agent, 400 )
 
 
-    all_steps = 0
+
     updates = 0
-    num_steps = 300
-    while all_steps < num_steps:
+
+
+    while updates < max_updates:
         envs.memory.step = 0 #TODO: This is naughty!
         # Step until memory is filled, access memory through envs.memory 
         envs.step() 
@@ -112,7 +106,7 @@ def main():
         spatial = Variable(memory.spatial_obs)
         #spatial = spatial.view(-1, *spatial_obs_space)
         non_spatial = Variable(memory.non_spatial_obs)
-        #non_spatial = non_spatial.view(-1, non_spatial.shape[-1]) 
+        non_spatial = non_spatial.view(-1, non_spatial.shape[-1])
         
         
         actions = Variable(torch.LongTensor(memory.actions.view(-1, 1)))
@@ -132,8 +126,6 @@ def main():
         
         action_loss = -(Variable(advantages.data) * action_log_probs).mean()
         
-        
-        
         optimizer.zero_grad()
 
         total_loss = (value_loss * value_loss_coef + prediction_loss * prediction_loss_coeff + action_loss - dist_entropy * entropy_coef)
@@ -143,7 +135,6 @@ def main():
 
         optimizer.step()
 
-        all_steps += 10 #TODO, number of observations-action pairs used for this update
         updates += 1
 
         # Self-play save
@@ -155,10 +146,11 @@ def main():
         #send updated agent to workers
         agent.policy = ac_agent 
 
-        print(f"sending agent {updates} ")
         envs.update_trainee(agent)
-        report = envs.academy.report()
-        print(report)
+        if updates % 5 == 0:
+            report = envs.academy.report()
+            print(f"Update {updates}/{max_updates}")
+            print(report)
 
     #torch.save(ac_agent, "models/" + model_name)
     print("closing workers!")

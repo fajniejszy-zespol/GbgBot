@@ -25,7 +25,8 @@ class Scoring(Lecture):
         self.obstacle_mod = 4
         super().__init__("Score", self.dst_mod*self.obstacle_mod  -1) 
         
-    def _reset_lecture(self, game): 
+    def reset_game(self, config):
+        game = get_empty_game_turn(config, turn=7)
 
         # ### CONFIG ### # 
         board_x_max = len(game.state.pitch.board[0]) -2  
@@ -72,15 +73,14 @@ class Scoring(Lecture):
         
         move_players_out_of_square(game, home_players+away_players, [x_left, x_right], [y_top, y_bottom] )
         
-        self.turn = deepcopy(game.state.home_team.state.turn)  
+        return game
     
-    def training_done(self, game): 
-        training_complete = self.turn  !=  game.state.home_team.state.turn
-        training_outcome = game.state.home_team.state.score > 0 
-        return training_complete, training_outcome
-    
-    def allowed_fail_rate(self): 
-        return 0 
+    def evaluate(self, game, drive_over):
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else:
+            return None
+
 
 class PickupAndScore(Lecture): 
     def __init__(self): 

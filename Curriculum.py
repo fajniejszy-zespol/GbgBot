@@ -112,6 +112,17 @@ class LectureHistory:
             self.history_filled = True
             self.index = 0
 
+        #Increase difficulty?
+        if self.lecture.get_level() == outcome.level:
+            if outcome.result == 1:
+                self.lecture.increase_diff()
+            else:
+                self.lecture.decrease_diff()
+
+        if outcome.result == 1 and self.max_acheived < outcome.level:
+            self.max_acheived = outcome.level
+
+
     def report(self, with_name=False):
         lvl = str(self.lecture.get_level())
         max_lvl = self.lecture.max_level
@@ -122,8 +133,6 @@ class LectureHistory:
         s = f"ep={self.episodes}, steps={self.steps}, lvl= {lvl} ({self.max_acheived})/{max_lvl}), avg={avg}"
         return s
 
-        # s_log = "p={:.0f}, rewrd= {:.2f} ({:.2f}), rewrd/dt= {:.2f}".format(name, episodes, lvl, max_acheived, max_lvl, 100*avg, 100*prob, reward_fail,  reward_success, reward_delta)
-
 
 class Academy:
 
@@ -132,7 +141,11 @@ class Academy:
         self.add_lecture(lectures)
 
     def _update_probs(self):
-        self.lec_prob = np.ones((self.num_lects,)) / self.num_lects
+        try:
+            self.lec_prob = np.array([lecture.episodes / lecture.steps for lecture in self.lect_histo])
+            self.lec_prob /= self.lec_prob.sum()
+        except:
+            self.lec_prob = np.ones((self.num_lects,)) / self.num_lects
         assert round(sum(self.lec_prob), 3) == 1.0
 
     def get_next_lecture(self):
@@ -364,7 +377,7 @@ def move_player_within_square(game, player, x, y, give_ball=False, p_used=None, 
         if game.state.pitch.board[y][x] is None:
             break
 
-    game.move(player, Square(x, y))
+    game.put(player, Square(x, y))
     if give_ball == True:
         game.get_ball().move_to(player.position)
         game.get_ball().is_carried = True
@@ -400,7 +413,7 @@ def move_player_out_of_square(game, player, x, y, p_used=None, p_down=None):
         if game.state.pitch.board[y][x] is None:
             break
 
-    game.move(player, Square(x, y))
+    game.put(player, Square(x, y))
     set_player_state(player, p_used=p_used, p_down=p_down)
 
 
