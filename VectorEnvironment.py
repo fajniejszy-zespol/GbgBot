@@ -1,3 +1,4 @@
+import warnings
 
 from pytest import set_trace
 
@@ -8,6 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ffai.core.table import OutcomeType
+
+warnings.filterwarnings('ignore')
 
 from time import sleep
 
@@ -117,7 +120,7 @@ class Memory(object):
         pass
 
     def clear_memory(self):
-        pass #TODO
+        pass  # TODO
 
     def insert_worker_memory(self, worker_mem):
         steps_to_copy = worker_mem.get_steps_to_copy()
@@ -152,8 +155,9 @@ class WorkerMemory(object):
         action_space = env.get_action_shape()
 
         self.max_steps = max_steps
-        self.looped = False
-        self.step = 0
+        self.looped = None
+        self.step = None
+        self.reset()  # Sets step=0 and looped=False
 
         self.spatial_obs = torch.zeros(max_steps, *spatial_obs_shape)
         self.non_spatial_obs = torch.zeros(max_steps, *non_spatial_obs_shape)
@@ -167,36 +171,27 @@ class WorkerMemory(object):
     def cuda(self):
         pass
 
-    def insert_first_obs(self, spatial_obs, non_spatial_obs):
-        # consider clearing the variables
+    def reset(self):
+        # TODO: consider clearing the variables
         self.step = 0
         self.looped = False
 
-        self.spatial_obs[0].copy_(spatial_obs)
-        self.non_spatial_obs[0].copy_(non_spatial_obs)
-
-    def insert_network_step(self, done, spatial_obs, non_spatial_obs, action, reward, action_masks):
-
+    def insert_network_step(self, spatial_obs, non_spatial_obs, action, reward, action_masks):
+        # The observation and the action, reward and action mask is inserted in the same step.
+        # It means that this observation lead to this action. This is not the case in the tutorial from Njustesen!
         self.actions[self.step] = action
         self.rewards[self.step] = reward
         self.action_masks[self.step].copy_(action_masks)
+        self.spatial_obs[self.step].copy_(spatial_obs)
+        self.non_spatial_obs[self.step].copy_(non_spatial_obs)
 
         self.step += 1
         if self.step == self.max_steps:
             self.step = 0
             self.looped = True
 
-        if not done:
-            self.spatial_obs[self.step].copy_(spatial_obs)
-            self.non_spatial_obs[self.step].copy_(non_spatial_obs)
-
-    def insert_scripted_step(self, done, spatial_obs, non_spatial_obs, reward):
-        # observation overwrites the previously inserted observations 
-        if not done:
-            self.spatial_obs[self.step].copy_(spatial_obs)
-            self.non_spatial_obs[self.step].copy_(non_spatial_obs)
-
-        # reward is added to the previously inserted reward 
+    def insert_scripted_step(self, reward):
+        # reward is added to the previously inserted reward
         prev_step = self.step - 1 if self.step > 0 else self.max_steps - 1
         self.rewards[prev_step] += reward
 
@@ -235,7 +230,8 @@ class VecEnv():
         self.lecture_queue = Queue()
         self.ps_message = [Queue() for _ in range(nenvs)]
 
-        self.ps = [Process(target=worker, args=(self.results_queue, self.lecture_queue, msg_queue, env, envs.index(env), lect, starting_agent))
+        self.ps = [Process(target=worker, args=(
+        self.results_queue, self.lecture_queue, msg_queue, env, envs.index(env), lect, starting_agent))
                    for (msg_queue, env, lect) in zip(self.ps_message, envs, lectures)]
 
         for p in self.ps:
@@ -247,13 +243,13 @@ class VecEnv():
     def step(self):
 
         while self.memory.not_full():
-            data = self.results_queue.get()   #Blocking call
+            data = self.results_queue.get()  # Blocking call
             self.memory.insert_worker_memory(data[0])
             self.academy.log_training(data[1])
 
             if self.lecture_queue.empty():
                 for _ in range(5):
-                    self.lecture_queue.put( self.academy.get_next_lecture() )
+                    self.lecture_queue.put(self.academy.get_next_lecture())
 
         return True
 
@@ -284,17 +280,14 @@ class VecEnv():
 
 
 def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, trainee):
-
     worker_running = True
     steps = 0
     reset_steps = 2000
 
     with torch.no_grad():
 
-        obs = env.reset(lecture)
-        spatial_obs, non_spatial_obs = trainee._update_obs(obs)
+        env.reset(lecture, skip_obs=True)
         memory = WorkerMemory(worker_max_steps, env)
-        memory.insert_first_obs(spatial_obs, non_spatial_obs)
 
         while worker_running:
 
@@ -303,6 +296,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 command, data = msg_queue.get()
                 if command == 'swap trainee':
                     trainee = data
+                    # print(f"swap trainee on step - {steps}") # TODO, is quite a lot of steps...
                 elif command == 'close':
                     break
                 else:
@@ -310,15 +304,15 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
 
             # Agent takes step  and insert to memory
             steps += 1
-            (action, action_idx, action_masks, value, spatial_obs, non_spatial_obs) = trainee.act(game=None, env=env,
-                                                                                                  obs=obs)
-            obs, reward, done, info, lect_outcome = env.step(action)
+
+            (action, action_idx, action_masks, value, spatial_obs, non_spatial_obs) = trainee.act(game=None, env=env)
+            (_, reward, done, info, lect_outcome) = env.step(action, skip_obs=True)
             reward_shaped = reward_function(env, info, shaped=True)
 
-            if action_idx is None or action_masks is None or value is None:
-                memory.insert_scripted_step(done, spatial_obs, non_spatial_obs, reward_shaped)
+            if trainee.cnn_used_for_latest_action():
+                memory.insert_network_step(spatial_obs, non_spatial_obs, action_idx, reward_shaped, action_masks)
             else:
-                memory.insert_network_step(done, spatial_obs, non_spatial_obs, action_idx, reward_shaped, action_masks)
+                memory.insert_scripted_step(reward_shaped)
 
             # Check progress and report back
             if done:
@@ -331,13 +325,12 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 results_queue.put((memory, lect_outcome))
 
                 try:
-                    lecture = lecture_queue.get(timeout=10) # Blocking call
+                    lecture = lecture_queue.get(timeout=10)  # Blocking call
                 except:
                     worker_running = False
                     break
-                obs = env.reset(lecture=lecture)
-                spatial_obs, non_spatial_obs = trainee._update_obs(obs)
-                memory.insert_first_obs(spatial_obs, non_spatial_obs)
+                env.reset(lecture=lecture, skip_obs=True)
+                memory.reset()
 
                 steps = 0
 

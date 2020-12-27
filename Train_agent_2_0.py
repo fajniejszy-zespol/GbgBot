@@ -13,7 +13,7 @@ from Curriculum import Academy
 import Lectures
 
 # Training configuration
-max_updates = 20
+max_updates = 2000
 num_processes = 8
 learning_rate = 0.001
 gamma = 0.99
@@ -103,14 +103,14 @@ def main():
         memory = envs.memory 
         
         # ### Evaluate the actions taken ### 
-        spatial = Variable(memory.spatial_obs)
+        spatial = Variable(memory.spatial_obs[:memory.step])
         #spatial = spatial.view(-1, *spatial_obs_space)
-        non_spatial = Variable(memory.non_spatial_obs)
+        non_spatial = Variable(memory.non_spatial_obs[:memory.step])
         non_spatial = non_spatial.view(-1, non_spatial.shape[-1])
         
-        
-        actions = Variable(torch.LongTensor(memory.actions.view(-1, 1)))
-        actions_mask = Variable(memory.action_masks)
+
+        actions = Variable(torch.LongTensor(memory.actions[:memory.step].view(-1, 1)))
+        actions_mask = Variable(memory.action_masks[:memory.step])
 
         action_log_probs, values, dist_entropy, td_pred = ac_agent.evaluate_actions(spatial, non_spatial, actions, actions_mask)
 
@@ -118,10 +118,10 @@ def main():
         #values = values.view(steps_per_update, num_processes, 1)
         #action_log_probs = action_log_probs.view(steps_per_update, num_processes, 1)
 
-        advantages = Variable(memory.returns) - values
+        advantages = Variable(memory.returns[:memory.step]) - values
         value_loss = advantages.pow(2).mean()
         
-        outcome_prediction_error = Variable(memory.td_outcome) - td_pred
+        outcome_prediction_error = Variable(memory.td_outcome[:memory.step]) - td_pred
         prediction_loss = outcome_prediction_error.pow(2).mean() 
         
         action_loss = -(Variable(advantages.data) * action_log_probs).mean()
