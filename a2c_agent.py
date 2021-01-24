@@ -21,35 +21,65 @@ log_filename = "logs/" + model_name + ".dat"
 
 class CNNPolicy(nn.Module):
 
-    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions):
+    def __init__(self, spatial_shape, non_spatial_inputs, hidden_nodes, kernels, actions, spatial_action_types,
+                 non_spat_actions):
         super(CNNPolicy, self).__init__()
 
         # Spatial input stream
-        self.conv1 = nn.Conv2d(spatial_shape[0], out_channels=kernels[0], kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(in_channels=kernels[0], out_channels=kernels[1], kernel_size=3, stride=1, padding=1)
+        self.num_convs = len(kernels)
 
-        # Non-spatial input stream
-        self.linear0 = nn.Linear(non_spatial_inputs, hidden_nodes)
+        self.convs = [nn.Conv2d(in_channels=spatial_shape[0], out_channels=kernels[0][0], kernel_size=3, stride=1, padding=1)]
 
-        # Linear layers
-        stream_size = kernels[1] * spatial_shape[1] * spatial_shape[2]
-        stream_size += hidden_nodes
-        self.linear1 = nn.Linear(stream_size, hidden_nodes)
+        #self.convs = [nn.Conv2d(in_channels=43, out_channels=32, kernel_size=3, stride=1, padding=1)]
+
+        in_channels = kernels[0][0]
+
+        for kernel in kernels[1:-1]:
+            out_channels = kernel[0]
+            kernel_size = kernel[1]
+            padding = (kernel_size - 1) // 2
+            assert out_channels > 0
+            assert kernel_size in list(range(3, 27, 2))
+
+            self.convs.append(nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
+                                        kernel_size=kernel_size, stride=1, padding=padding))
+
+            in_channels = out_channels
+
+        out_channels = spatial_action_types
+        kernel_size = kernels[-1][1]
+        padding = (kernel_size - 1) // 2
+        self.convs.append(nn.Conv2d(in_channels=in_channels, out_channels=out_channels,
+                                    kernel_size=kernel_size, stride=1, padding=padding))
+
+        self.conv_non_spat1 = nn.Conv2d(in_channels=in_channels, out_channels=64,
+                                        kernel_size=7, stride=1, padding=1)
+        self.conv_non_spat2 = nn.Conv2d(in_channels=64, out_channels=32,
+                                        kernel_size=7, stride=1, padding=1)
+
+        stream_size = 2240  # assert False #TODO. How do calculate this dynamically for different pitch sizes.
+
+        self.linear_non_spat = nn.Linear(stream_size, hidden_nodes)
+
+        self.linear_non_spat_action = nn.Linear(hidden_nodes, non_spat_actions)
 
         # The outputs
         self.critic = nn.Linear(hidden_nodes, 1)
-        self.actor = nn.Linear(hidden_nodes, actions)
         self.outcome_pred = nn.Linear(hidden_nodes, 1)
-        
+
         self.reset_parameters()
 
     def reset_parameters(self):
         relu_gain = nn.init.calculate_gain('relu')
-        self.conv1.weight.data.mul_(relu_gain)
-        self.conv2.weight.data.mul_(relu_gain)
-        self.linear0.weight.data.mul_(relu_gain)
-        self.linear1.weight.data.mul_(relu_gain)
-        self.actor.weight.data.mul_(relu_gain)
+
+        for conv in self.convs:
+            conv.weight.data.mul_(relu_gain)
+        self.conv_non_spat1.weight.data.mul_(relu_gain)
+        self.conv_non_spat2.weight.data.mul_(relu_gain)
+
+        self.linear_non_spat.weight.data.mul_(relu_gain)
+
+        self.linear_non_spat_action.weight.data.mul_(relu_gain)
         self.critic.weight.data.mul_(relu_gain)
         self.outcome_pred.weight.data.mul_(relu_gain)
 
@@ -57,34 +87,35 @@ class CNNPolicy(nn.Module):
         """
         The forward functions defines how the data flows through the graph (layers)
         """
-        # Spatial input through two convolutional layers
-        x1 = self.conv1(spatial_input)
-        x1 = F.relu(x1)
-        x1 = self.conv2(x1)
-        x1 = F.relu(x1)
+        # Spatial input the convolutional layers
+        spat_x = spatial_input
+        for conv in self.convs[:-1]:
+            spat_x = F.relu(conv(spat_x))
 
-        # Concatenate the input streams
-        flatten_x1 = x1.flatten(start_dim=1)
+        spat_actions = self.convs[-1](spat_x)
+        spat_actions = spat_actions.flatten(start_dim=1)
 
-        x2 = self.linear0(non_spatial_input)
-        x2 = F.relu(x2)
+        # Two conv layers and one linear - For game understanding
+        non_spat_output = F.relu(self.conv_non_spat1(spat_x))
+        non_spat_output = F.relu(self.conv_non_spat2(non_spat_output))
 
-        flatten_x2 = x2.flatten(start_dim=1)
-        concatenated = torch.cat((flatten_x1, flatten_x2), dim=1)
+        non_spat_output = non_spat_output.flatten(start_dim=1)
 
-        # Fully-connected layers
-        x3 = self.linear1(concatenated)
-        x3 = F.relu(x3)
-        #x2 = self.linear2(x2)
-        #x2 = F.relu(x2)
+        non_spat_output = F.relu(self.linear_non_spat(non_spat_output))
+
+
+            # Non-spat actions
+        non_spat_actions = self.linear_non_spat_action(non_spat_output)
 
         # Output streams
-        value = self.critic(x3)
-        actor = self.actor(x3)
-        outcome = self.outcome_pred(x3) 
-        
+
+
+        value = self.critic(non_spat_output)
+        actor = torch.cat((non_spat_actions, spat_actions), dim=1)
+        outcome = self.outcome_pred(non_spat_output)
+
         # return value, policy
-        return value, actor, outcome 
+        return value, actor, outcome
 
     def act(self, spatial_inputs, non_spatial_input, action_mask):
         values, action_probs = self.get_action_probs(spatial_inputs, non_spatial_input, action_mask=action_mask)
@@ -93,7 +124,7 @@ class CNNPolicy(nn.Module):
 
     def evaluate_actions(self, spatial_inputs, non_spatial_input, actions, actions_mask):
         value, policy, pred = self(spatial_inputs, non_spatial_input)
-        #actions_mask = actions_mask.view(-1, 1, actions_mask.shape[1]).squeeze().bool()
+        # actions_mask = actions_mask.view(-1, 1, actions_mask.shape[1]).squeeze().bool()
         policy[~actions_mask.bool()] = float('-inf')
         log_probs = F.log_softmax(policy, dim=1)
         probs = F.softmax(policy, dim=1)
@@ -124,8 +155,8 @@ class A2CAgent(Agent):
         self.board_squares = self.spatial_obs_space[1] * self.spatial_obs_space[2]
 
         self.non_spatial_obs_space = self.env.observation_space.spaces['state'].shape[0] + \
-                                self.env.observation_space.spaces['procedures'].shape[0] + \
-                                self.env.observation_space.spaces['available-action-types'].shape[0]
+                                     self.env.observation_space.spaces['procedures'].shape[0] + \
+                                     self.env.observation_space.spaces['available-action-types'].shape[0]
         self.non_spatial_action_types = FFAIEnv.simple_action_types + FFAIEnv.defensive_formation_action_types + FFAIEnv.offensive_formation_action_types
         self.num_non_spatial_action_types = len(self.non_spatial_action_types)
         self.spatial_action_types = FFAIEnv.positional_action_types
@@ -140,6 +171,24 @@ class A2CAgent(Agent):
         self.end_setup = False
         self.cnn_used = False
 
+    def create_action_object(self, action_type, x=None, y=None):
+        if action_type is None:
+            return None
+
+        if self.not_training:
+            # position = Square(x, y) if action_type in FFAIEnv.positional_action_types else None
+            # return ffai.Action(action_type, position=position, player=None)
+
+            if action_type in FFAIEnv.positional_action_types:
+                assert x is not None and y is not None
+                return ffai.Action(action_type, position=Square(x, y), player=None)
+            else:
+                return ffai.Action(action_type, position=None, player=None)
+        else:
+            return {'action-type': action_type,
+                    'x': x,
+                    'y': y}
+
     def new_game(self, game, team):
         self.my_team = team
         self.is_home = self.my_team == game.state.home_team
@@ -150,85 +199,184 @@ class A2CAgent(Agent):
             flipped[name] = np.flip(layer, 1)
         return flipped
 
-    def act(self, game, env=None, obs=None, updated_obs = None):
+    def act(self, game, env=None):
 
         '''todo - Update code to get observations that are torch tensors. 
                 - because they are either way converted for the policy optimization. 
         '''
 
 
-        self.cnn_used = False 
+
+        self.not_training = env is None
+
+
+        if game is None:
+            game = env.game
+
+
+        if self.my_team is None:
+            if self.not_training:
+                assert False
+            else:
+                self.my_team = game.state.home_team
+
+        self.cnn_used = False
+        action = self.scripted_act(game)
+        if action is not None:
+            if self.not_training:
+                return action
+            else:
+                return action, None, None, None, None, None
+
+        self.cnn_used = True
 
         # Get observation
-        if game is None: 
-            game = env.game 
-            if obs is None: 
-                observation = self.env.get_observation()
-                # TODO - call update_obs here 
-            else: 
-                observation = obs 
-        else:
+        if env is None:
+            assert game is not None
             self.env.game = game
-            observation = self.env.get_observation()
+            env = self.env
+        obs = env.get_observation()
 
         # Flip board observation if away team - we probably only trained as home team
         if not self.is_home:
-            observation['board'] = self._flip(observation['board'])
+            obs['board'] = self._flip(obs['board'])
 
         spatial_obs, non_spatial_obs = self._update_obs(obs)
 
         action_masks = self._compute_action_masks(obs)
         action_masks = torch.tensor(action_masks, dtype=torch.bool)
 
-        # SCRIPTED BEHAVIOR HANDLED HERE!!!
-        if self.end_setup:
-            self.end_setup = False
-            self.cnn_used = True
-            action_object = {
-                'action-type': ActionType.END_SETUP,
-                'x': None,
-                'y': None}
-            return (action_object, None, action_masks, None, spatial_obs, non_spatial_obs)
-
-
         values, actions = self.policy.act(
             Variable(spatial_obs.unsqueeze(0)),
             Variable(non_spatial_obs.unsqueeze(0)),
             Variable(action_masks.unsqueeze(0)))
 
-        values.detach() 
+        values.detach()
         # Create action from output
         action = actions[0]
         value = values[0]
-        value.detach() 
+        value.detach()
         action_type, x, y = self._compute_action(action.numpy()[0])
-        position = Square(x, y) if action_type in FFAIEnv.positional_action_types else None
 
-        # Flip position
-        if not self.is_home and position is not None:
-            position = Square(game.arena.width - 1 - position.x, position.y)
-
-        action = ffai.Action(action_type, position=position, player=None)
+        # Flip position if playing as away and x>0 (x>0 means it's a positional action)
+        if not self.is_home and x > 0:
+            x = game.arena.width - 1 - x
 
         # Let's just end the setup right after picking a formation
         if action_type.name.lower().startswith('setup'):
             self.end_setup = True
 
-        
-        action_object = {
-                            'action-type': action_type,
-                            'x': x,
-                            'y': y } 
-        
-        self.cnn_used = True  
-        
-        # Return action to the framework
-        #return (action, actions, action_masks) 
-        return (action_object, actions, action_masks, value, spatial_obs, non_spatial_obs) 
+        action_object = self.create_action_object(action_type, x, y)
+        if self.not_training:
+            return action_object
+        else:
+            return action_object, actions, action_masks, value, spatial_obs, non_spatial_obs
 
-    def cnn_used_for_latest_action(self): 
-        return self.cnn_used 
-    
+    def scripted_act(self, game):
+        if self.end_setup:
+            self.end_setup = False
+            return self.create_action_object(ActionType.END_SETUP)
+
+        available_action_types = [a.action_type for a in game.get_available_actions()]
+
+        for a in [ActionType.STAND_UP, ActionType.USE_BRIBE, ActionType.START_GAME, ActionType.HEADS,
+                  ActionType.RECEIVE]:
+            if a in available_action_types:
+                return self.create_action_object(a)
+
+        if ActionType.PLACE_BALL in available_action_types:
+            board_x_max = len(game.state.pitch.board[0]) - 2
+            board_y_max = len(game.state.pitch.board) - 2
+
+            if self.is_home:
+                x = board_x_max // 4 + 1
+            else:
+                x = 3 * board_x_max // 4 + 1
+            y = board_y_max // 2 + 1
+
+            return self.create_action_object(ActionType.PLACE_BALL, x, y)
+
+        proc = game.get_procedure()
+        if isinstance(proc, Block):
+            action_type = self.choose_block_dice(game, available_action_types)
+            return self.create_action_object(action_type)
+
+        return None
+
+    def choose_block_dice(self, game, actions):
+
+        # Block dice choice:
+        # Get attacker and defender
+        attacker = game.get_procedure().attacker
+        defender = game.get_procedure().defender
+
+        if attacker in self.my_team.players:
+
+            # 1. DEFENDER DOWN
+            if ActionType.SELECT_DEFENDER_DOWN in actions:
+                return ActionType.SELECT_DEFENDER_DOWN
+
+            if ActionType.SELECT_DEFENDER_STUMBLES in actions and not (
+                    defender.has_skill(Skill.DODGE) and not attacker.has_skill(Skill.TACKLE)):
+                return ActionType.SELECT_DEFENDER_STUMBLES
+
+            if ActionType.SELECT_BOTH_DOWN in actions and not defender.has_skill(Skill.BLOCK) and attacker.has_skill(
+                    Skill.BLOCK):
+                return ActionType.SELECT_BOTH_DOWN
+
+            # 2. No one down
+            if ActionType.SELECT_DEFENDER_STUMBLES in actions:
+                return ActionType.SELECT_DEFENDER_STUMBLES
+
+            if ActionType.SELECT_PUSH in actions:
+                return ActionType.SELECT_PUSH
+
+            if ActionType.SELECT_BOTH_DOWN in actions and attacker.has_skill(Skill.BLOCK):
+                return ActionType.SELECT_BOTH_DOWN
+
+            # 3. We're going down!
+            # If reroll available, ask the Neural Network
+            if ActionType.USE_REROLL in actions:
+                return None
+
+            if ActionType.SELECT_BOTH_DOWN in actions:
+                return ActionType.SELECT_BOTH_DOWN
+
+            if ActionType.SELECT_ATTACKER_DOWN in actions:
+                return ActionType.SELECT_ATTACKER_DOWN
+
+        else:  # Opponent made uphill block.
+            # 1. ATTACKER DOWN
+            if ActionType.SELECT_ATTACKER_DOWN in actions:
+                return ActionType.SELECT_ATTACKER_DOWN
+
+            # 2. BOTH DOWN
+            if ActionType.SELECT_BOTH_DOWN in actions and defender.has_skill(Skill.BLOCK):
+                return ActionType.SELECT_BOTH_DOWN
+
+            # 3. PUSH
+            if ActionType.SELECT_PUSH in actions:
+                return ActionType.SELECT_PUSH
+
+            # 4. PUSH by Dodge
+            if ActionType.SELECT_DEFENDER_STUMBLES in actions and defender.has_skill(
+                    Skill.DODGE) and not attacker.has_skill(Skill.TACKLE):
+                return ActionType.SELECT_DEFENDER_STUMBLES
+
+            # OK, we're going down!
+            # 5. BOTH DOWN
+            if ActionType.SELECT_BOTH_DOWN in actions:
+                return ActionType.SELECT_BOTH_DOWN
+
+            if ActionType.SELECT_DEFENDER_STUMBLES in actions:
+                return ActionType.SELECT_DEFENDER_STUMBLES
+
+            if ActionType.SELECT_DEFENDER_DOWN in actions:
+                return ActionType.SELECT_DEFENDER_DOWN
+
+    def cnn_used_for_latest_action(self):
+        return self.cnn_used
+
     def end_game(self, game):
         pass
 
@@ -240,7 +388,7 @@ class A2CAgent(Agent):
             i += 1
         for action_type in self.spatial_action_types:
             if ob['available-action-types'][action_type.name] == 0:
-                mask[i:i+self.board_squares] = 0
+                mask[i:i + self.board_squares] = 0
             elif ob['available-action-types'][action_type.name] == 1:
                 position_mask = ob['board'][f"{action_type.name.replace('_', ' ').lower()} positions"]
                 position_mask_flatten = np.reshape(position_mask, (1, self.board_squares))
@@ -267,18 +415,15 @@ class A2CAgent(Agent):
         the feature layers and non-spatial info.
         """
 
-
-
         spatial_obs = np.stack(obs['board'].values())
 
         state = list(obs['state'].values())
         procedures = list(obs['procedures'].values())
         actions = list(obs['available-action-types'].values())
 
-        non_spatial_obs = np.stack(state+procedures+actions)
+        non_spatial_obs = np.stack(state + procedures + actions)
         non_spatial_obs = np.expand_dims(non_spatial_obs, axis=0)
 
-        
         return torch.from_numpy(np.stack(spatial_obs)).float(), torch.from_numpy(np.stack(non_spatial_obs)).float()
 
     def make_env(self, env_name):
@@ -327,7 +472,7 @@ if __name__ == "__main__":
         game = ffai.Game(i, home, away, home_agent, away_agent, config, arena=arena, ruleset=ruleset)
         game.config.fast_mode = True
 
-        print("Starting game", (i+1))
+        print("Starting game", (i + 1))
         game.init()
         print("Game is over")
 
@@ -342,6 +487,6 @@ if __name__ == "__main__":
         tds_home += game.get_agent_team(home_agent).state.score
         tds_away += game.get_agent_team(away_agent).state.score
 
-    print(f"Home/Draws/Away: {wins}/{draws}/{n-wins-draws}")
-    print(f"Home TDs per game: {tds_home/n}")
-    print(f"Away TDs per game: {tds_away/n}")
+    print(f"Home/Draws/Away: {wins}/{draws}/{n - wins - draws}")
+    print(f"Home TDs per game: {tds_home / n}")
+    print(f"Away TDs per game: {tds_away / n}")
