@@ -794,7 +794,881 @@ class PlayRandomBot(PlayAgentLecture):
         super().__init__("Random bot", RandomBot("Random"))
 
         
+class Lecture1(Lecture): 
+    def __init__(self): 
         
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 1", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [[16,10],[11,3],[12,5],[14,7],[12,9],[9,9],[8,12],[13,13],[14,13],[14,14]] #1st one is the ballp_carrier
+        away_coords = [[10,3],[11,5],[13,6],[10,8],[12,8],[13,8],[8,9],[9,12],[7,12],[7,14]]
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ballp_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+        
+        #setup own team
+        for _ in range(len(home_players)-1): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+        
+
+class Lecture3(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 3", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [[11,14],[13,11],[14,6],[14,12],[14,13],[15,8],[15,9],[15,13]] #1st one is the ball p_carrier
+        away_coords = [[10,8],[10,13],[12,12],[13,6],[14,7],[14,10],[14,11],[15,3],[15,4]]
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+        
+        #setup own team
+        for a in range(len(home_players)-1): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+    
+
+class Lecture4(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 4", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game) 
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [ [10,3],[11,2],[11,5],[13,4],[13,6],[16,2],[17,3],[17,4] ] #1st one is the ball p_carrier #TODO czerwony
+        away_coords = [ [9,2],[9,3],[11,3],[13,2], [15,3],[16,5] ]                                    #TODO niebieski
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()    #TODO
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)-1): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1]) #TODO a+1 -> ten kto ma piłke
+        
+        #setup own team
+        for a in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1])  #TODO
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+    
+
+class Lecture5(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 5", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [[10,13],[10,10],[14,12],[16,9],[17,9]] #1st one is the ball p_carrier
+        away_coords = [[9,9],[11,8],[11,12],[15,12],[15,13],[16,12],[17,8],[18,13]]
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+        
+        #setup own team
+        for a in range(len(home_players)-1): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+    
+
+class Lecture6(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+
+        self.enemies_on_board = 0
+
+        super().__init__("Lecture 6", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game) 
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [ [14,6],[10,4],[11,2],[11,3],[12,4],[12,6],[13,5],[13,7],[13,10],[13,13],[15,7] ] #1st one is the ball p_carrier #TODO czerwony
+        away_coords = [ [9,2],[10,2],[10,5],[10,6],[10,7],[11,5],[11,6],[11,13][12,5],[12,9],[12,11] ]                                    #TODO niebieski
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()    #TODO
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)-1): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1]) #TODO a+1 -> ten kto ma piłke
+        
+        #setup own team
+        for a in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1])  #TODO
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+
+        self.enemies_on_board = 0
+        apl = get_away_players(game)
+        for p in apl:
+            if p.position == None:
+                self.enemies_on_board += 1
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        enemies = 0
+        apl = get_away_players(game)
+        for p in apl:
+            if p.position == None:
+                enemies += 1
+
+        training_outcome  = enemies <= (self.enemies_on_board - 2) 
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn or self.carrier.state.used 
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+    
+
+class Lecture7(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 7", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [[14,10],[14,3],[14,8],[14,9],[14,11],[14,12],[14,14],[15,9],[20,8]] #1st one is the ball p_carrier
+        away_coords = [[13,5],[13,8],[13,11]]
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+        
+        #setup own team
+        for a in range(len(home_players)-1): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+    
+
+class Lecture8(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 8", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game) 
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [ [13,6],[13,10],[14,6],[14,7],[14,9],[15,6],[15,8],[22,9] ] #1st one is the ball p_carrier #TODO czerwony
+        away_coords = [ [13,7],[13,9],[13,8],[3,2],[3,4],[3,6],[3,8],[3,10],[3,12],[3,14],[4,8] ]                                    #TODO niebieski
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+
+
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1]) #TODO a+1 -> ten kto ma piłke
+        
+        #setup own team
+        for a in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1])  #TODO
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        put(game,ball,[23,10])
+
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+    
+
+class Lecture10(Lecture):
+    def __init__(self):
+
+        self.action_started_mod = 2
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 10", self.dst_mod * self.noise_mod - 1, delta_level=0.1)
+
+    def _reset_lecture(self, game):
+
+        # ### CONFIG ### #
+        board_x_max = len(game.state.pitch.board[0]) - 2
+        board_y_max = len(game.state.pitch.board) - 2
+
+        # Level configuration
+        level = self.get_level()
+        noise = (level % self.noise_mod)
+        action_started = (level // self.noise_mod) % self.action_started_mod
+        distance = (level // self.noise_mod //
+                    self.action_started_mod) % self.dst_mod
+
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        # inserting coords for players according to lectures
+        home_coords = [[15, 12], [13, 7], [13, 9], [13, 12], [13, 13], [14, 7], [14, 8], [
+            14, 9], [15, 13], [16, 11]]  # 1st one is the ball p_carrier #TODO czerwony
+        away_coords = [[11, 6], [12, 6], [12, 7], [12, 9], [11, 12], [
+            12, 13], [14, 11], [14, 12], [15, 14]]  # TODO niebieski
+
+        # give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+        p_carrier = home_players.pop()  # TODO
+        move_player_within_square(
+            game, p_carrier, x=home_coords[0, 0], y=home_coords[0, 1], give_ball=True)
+
+        # setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()  # TODO
+        move_player_within_square(
+            game, p_carrier, x=home_coords[0, 0], y=home_coords[0, 1], give_ball=True)
+
+        # setup opponents
+        for a in range(len(away_players)):
+            p = away_players.pop()
+            # TODO a+1 -> ten kto ma piłke
+            move_player_within_square(
+                game, p, x=away_coords[a, 0], y=away_coords[a, 1])
+
+        # setup own team
+        for a in range(len(home_players)-1):
+            p = home_players.pop()
+            move_player_within_square(
+                game, p, x=home_coords[a+1, 0], y=home_coords[a+1, 1])  # TODO
+        # REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+
+        if noise == 0:
+            move_player_within_square(
+                game, p_carrier, center_square.x, center_square.y)
+        else:
+            game.move(p_carrier, get_boundary_square(
+                game, 1+distance, game.get_ball().position))
+
+        if p_carrier.position.x < 15:
+            move_player_within_square(game, p_carrier, x=[15, 18], y=[
+                                      p_carrier.position.y-1, p_carrier.position.y+1])
+
+        if action_started == 0:
+            game.set_available_actions()
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type,
+                       position=p_carrier.position, player=p_carrier)
+            game.step(a)
+
+        self.turn = deepcopy(game.state.home_team.state.turn)
+        self.carrier = p_carrier
+
+    def training_done(self, game):
+        pos_x = self.carrier.x
+        pos_y = self.carrier.y
+
+        top_left = False
+        top_right = False
+        bottom_left = False
+        bottom_right = False
+
+        home_players = get_home_players(game)
+
+        for player in home_players:
+            pp = player.position
+
+            if (pp.x == pos_x - 1) and (pp.y == pos_y - 1):
+                top_left = True
+            if (pp.x == pos_x + 1) and (pp.y == pos_y - 1):
+                top_right = True
+            if (pp.x == pos_x - 1) and (pp.y == pos_y + 1):
+                bottom_left = True
+            if (pp.x == pos_x + 1) and (pp.y == pos_y + 1):
+                bottom_right = True
+
+        training_outcome = top_left and top_right and bottom_left and bottom_right
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn or self.carrier.state.used
+        return training_complete, training_outcome
+
+    def allowed_fail_rate(self):
+        return 0
+
+
+class Lecture11(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 11", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [[13,6],[13,9],[14,6],[14,7],[14,9],[15,6],[15,7],[15,8]]
+        away_coords = [[10,2],[11,3],[10,5],[11,6],[11,10],[10,11],[11,13],[10,14],[13,7],[13,8],[14,8]]
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+        
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+        
+        #setup own team
+        for a in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1]) 
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        put(game,ball,[7,8])
+               
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+
+
+
+class Lecture13(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 13", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game)
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [[6,12],[7,11],[8,13],[9,13],[12,10],[12,11]]
+        away_coords = [[8,9],[2,10],[3,10]]
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+        
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+        
+        #setup own team
+        for a in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1]) 
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        put(game,ball,[8,5])
+               
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+
+
+class Lecture14(Lecture): 
+    def __init__(self): 
+        
+        self.action_started_mod = 2 
+        self.dst_mod = 6
+        self.noise_mod = 7
+        super().__init__("Lecture 14", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+        
+    def _reset_lecture(self, game): 
+
+        # ### CONFIG ### # 
+        board_x_max = len(game.state.pitch.board[0]) -2  
+        board_y_max = len(game.state.pitch.board) -2
+    
+        #Level configuration 
+        level = self.get_level()        
+        noise           = (level % self.noise_mod) 
+        action_started  = (level // self.noise_mod) % self.action_started_mod
+        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+        
+        home_players = get_home_players(game) 
+        away_players = get_away_players(game)
+
+        #inserting coords for players according to lectures 
+        home_coords = [ [14,5],[14,6],[14,7],[14,8],[14,9],[14,10],[14,12],[13,6],[13,7],[13,8],[22,8] ] #1st one is the ball p_carrier #TODO czerwony
+        away_coords = [ [12,4],[12,5],[12,6],[12,7],[12,9],[12,10],[12,11],[12,12],[13,7],[13,8],[13,9] ]                                    #TODO niebieski
+
+        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+
+        #setup ball p_carrier, change home to away if it's red team
+        p_carrier = home_players.pop()    #TODO
+        move_player_within_square(game, p_carrier, x=home_coords[0,0], y=home_coords[0,1], give_ball=True)
+
+        #setup opponents
+        for a in range(len(away_players)): 
+            p = away_players.pop() 
+            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1]) #TODO a+1 -> ten kto ma piłke
+        
+        #setup own team
+        for a in range(len(home_players)): 
+            p = home_players.pop() 
+            move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1])  #TODO
+        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+        
+        put(game,ball,[20,10])
+
+        
+        if noise == 0: 
+            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        else:    
+            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        
+        if p_carrier.position.x < 15: 
+            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+        
+        if action_started == 0: 
+            game.set_available_actions() 
+            action_type = ActionType.START_MOVE
+            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+            game.step(a)
+        
+        self.turn = deepcopy(game.state.home_team.state.turn)  
+        self.carrier = p_carrier
+    
+    def training_done(self, game):
+        training_outcome = False
+        home_players = get_home_players(game)
+        
+        for player in home_players:
+            if game.is_touchdown(player):
+                training_outcome = True
+
+        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+        return training_complete, training_outcome
+    
+    def allowed_fail_rate(self): 
+        return 0      
+            
     
         
     
