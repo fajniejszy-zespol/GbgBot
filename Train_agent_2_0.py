@@ -24,7 +24,7 @@ max_grad_norm = 0.05
 
 # Environment
 env_name = "FFAI-5-v2"
-active_lectures = [ Lectures.Scoring(), Lectures.GameAgainstRandom()]
+active_lectures = [ Lectures.Scoring(), Lectures.GameAgainstRandom(),Lectures.Lecture1(), Lectures.Lecture2(), Lectures.Lecture3(), Lectures.Lecture4(), Lectures.Lecture5(), Lectures.Lecture6(), Lectures.Lecture7(), Lectures.Lecture8(), Lectures.Lecture9(), Lectures.Lecture10(), Lectures.Lecture11(), Lectures.Lecture12(), Lectures.Lecture13(), Lectures.Lecture14()]
 
 # Architecture
 num_hidden_nodes = 128
