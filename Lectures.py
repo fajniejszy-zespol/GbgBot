@@ -90,6 +90,9 @@ class PickupAndScore(Lecture):
         
         super().__init__("Pickup", self.dst_mod * self.ball_mod * self.marked_ball_mod -1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -183,6 +186,16 @@ class PassAndScore(Lecture):
         else:
             super().__init__("Pass to Score", max_level)    
             
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+    
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+
     def _reset_lecture(self, game): 
         
         assert game.is_pass_available()
@@ -289,6 +302,15 @@ class BlockBallCarrier(Lecture):
         #self.obstacle_mod = 4
         super().__init__("BlockBall", self.challenge_level  -1, delta_level=0.05) 
         
+
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -358,6 +380,15 @@ class CrowdSurf(Lecture):
         
         super().__init__("Crowd Surf",self.noise_mod * self.with_ball_mod * self.steps_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -460,6 +491,15 @@ class PreventScore(Lecture):
         
         super().__init__(name, max_level, delta_level= delta_level)
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
         
         if self.home_defence and not self.debug: 
@@ -599,6 +639,15 @@ class ChooseBlockDie(Lecture):
         #self.obstacle_mod = 4
         super().__init__("Choose Die", self.dice_mod * self.opp_skills_mod * self.own_skills_mod  -1, delta_level=0.05) 
     
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
         # ### CONFIG ### # 
         board_x_max = len(game.state.pitch.board[0]) -2  
@@ -700,9 +749,18 @@ class PlayAgentLecture(Lecture):
         return self.agent 
     def lec_reset_required(self): 
         return False 
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
     def training_done(self, game): 
         return  game.state.game_over, (game.state.away_team.state.score <= game.state.home_team.state.score) 
     def is_full_game_lect(self): return True 
+    
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     
 class PickupKickoffBall(Lecture): 
     def __init__(self): 
@@ -712,6 +770,15 @@ class PickupKickoffBall(Lecture):
         self.noise_mod = 7
         super().__init__("Kickoff pickup", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+    
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -802,6 +869,15 @@ class Lecture1(Lecture):
         self.noise_mod = 7
         super().__init__("Lecture 1", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -838,10 +914,10 @@ class Lecture1(Lecture):
             move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -877,7 +953,16 @@ class Lecture3(Lecture):
         self.dst_mod = 6
         self.noise_mod = 7
         super().__init__("Lecture 3", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
-        
+    
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -914,10 +999,10 @@ class Lecture3(Lecture):
             move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -953,7 +1038,16 @@ class Lecture4(Lecture):
         self.dst_mod = 6
         self.noise_mod = 7
         super().__init__("Lecture 4", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
-        
+    
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -990,10 +1084,10 @@ class Lecture4(Lecture):
             move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1])  #TODO
         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -1030,6 +1124,15 @@ class Lecture5(Lecture):
         self.noise_mod = 7
         super().__init__("Lecture 5", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -1066,10 +1169,10 @@ class Lecture5(Lecture):
             move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -1109,6 +1212,15 @@ class Lecture6(Lecture):
 
         super().__init__("Lecture 6", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -1145,10 +1257,10 @@ class Lecture6(Lecture):
             move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1])  #TODO
         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -1191,6 +1303,15 @@ class Lecture7(Lecture):
         self.noise_mod = 7
         super().__init__("Lecture 7", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -1227,10 +1348,10 @@ class Lecture7(Lecture):
             move_player_within_square(game, p, x=home_coords[a+1,0], y=home_coords[a+1,1]) 
         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -1267,6 +1388,15 @@ class Lecture8(Lecture):
         self.noise_mod = 7
         super().__init__("Lecture 8", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -1304,10 +1434,10 @@ class Lecture8(Lecture):
         
         put(game,ball,[23,10])
 
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
@@ -1344,6 +1474,15 @@ class Lecture10(Lecture):
         self.noise_mod = 7
         super().__init__("Lecture 10", self.dst_mod * self.noise_mod - 1, delta_level=0.1)
 
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game):
 
         # ### CONFIG ### #
@@ -1390,12 +1529,12 @@ class Lecture10(Lecture):
                 game, p, x=home_coords[a+1, 0], y=home_coords[a+1, 1])  # TODO
         # REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
 
-        if noise == 0:
-            move_player_within_square(
-                game, p_carrier, center_square.x, center_square.y)
-        else:
-            game.move(p_carrier, get_boundary_square(
-                game, 1+distance, game.get_ball().position))
+        # if noise == 0:
+        #     move_player_within_square(
+        #         game, p_carrier, center_square.x, center_square.y)
+        # else:
+        #     game.move(p_carrier, get_boundary_square(
+        #         game, 1+distance, game.get_ball().position))
 
         if p_carrier.position.x < 15:
             move_player_within_square(game, p_carrier, x=[15, 18], y=[
@@ -1442,153 +1581,159 @@ class Lecture10(Lecture):
         return 0
 
 
-class Lecture11(Lecture): 
-    def __init__(self): 
+# class Lecture11(Lecture): 
+#     def __init__(self): 
         
-        self.action_started_mod = 2 
-        self.dst_mod = 6
-        self.noise_mod = 7
-        super().__init__("Lecture 11", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+#         self.action_started_mod = 2 
+#         self.dst_mod = 6
+#         self.noise_mod = 7
+#         super().__init__("Lecture 11", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
-    def _reset_lecture(self, game): 
+#     def reset_game(self, config): 
+#         return get_empty_game_turn(config, turn=0)
 
-        # ### CONFIG ### # 
-        board_x_max = len(game.state.pitch.board[0]) -2  
-        board_y_max = len(game.state.pitch.board) -2
+#     def _reset_lecture(self, game): 
+
+#         # ### CONFIG ### # 
+#         board_x_max = len(game.state.pitch.board[0]) -2  
+#         board_y_max = len(game.state.pitch.board) -2
     
-        #Level configuration 
-        level = self.get_level()        
-        noise           = (level % self.noise_mod) 
-        action_started  = (level // self.noise_mod) % self.action_started_mod
-        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+#         #Level configuration 
+#         level = self.get_level()        
+#         noise           = (level % self.noise_mod) 
+#         action_started  = (level // self.noise_mod) % self.action_started_mod
+#         distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
         
-        home_players = get_home_players(game)
-        away_players = get_away_players(game)
+#         home_players = get_home_players(game)
+#         away_players = get_away_players(game)
 
-        #inserting coords for players according to lectures 
-        home_coords = [[13,6],[13,9],[14,6],[14,7],[14,9],[15,6],[15,7],[15,8]]
-        away_coords = [[10,2],[11,3],[10,5],[11,6],[11,10],[10,11],[11,13],[10,14],[13,7],[13,8],[14,8]]
+#         #inserting coords for players according to lectures 
+#         home_coords = [[13,6],[13,9],[14,6],[14,7],[14,9],[15,6],[15,7],[15,8]]
+#         away_coords = [[10,2],[11,3],[10,5],[11,6],[11,10],[10,11],[11,13],[10,14],[13,7],[13,8],[14,8]]
 
-        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+#         #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
         
-        #setup opponents
-        for a in range(len(away_players)): 
-            p = away_players.pop() 
-            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+#         #setup opponents
+#         for a in range(len(away_players)): 
+#             p = away_players.pop() 
+#             move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
         
-        #setup own team
-        for a in range(len(home_players)): 
-            p = home_players.pop() 
-            move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1]) 
-        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+#         #setup own team
+#         for a in range(len(home_players)): 
+#             p = home_players.pop() 
+#             move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1]) 
+#         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        put(game,ball,[7,8])
+#         put(game,ball,[7,8])
                
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+#         # if noise == 0: 
+#         #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+#         # else:    
+#         #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
-        if p_carrier.position.x < 15: 
-            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+#         if p_carrier.position.x < 15: 
+#             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
         
-        if action_started == 0: 
-            game.set_available_actions() 
-            action_type = ActionType.START_MOVE
-            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
-            game.step(a)
+#         if action_started == 0: 
+#             game.set_available_actions() 
+#             action_type = ActionType.START_MOVE
+#             a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+#             game.step(a)
         
-        self.turn = deepcopy(game.state.home_team.state.turn)  
-        self.carrier = p_carrier
+#         self.turn = deepcopy(game.state.home_team.state.turn)  
+#         self.carrier = p_carrier
     
-    def training_done(self, game):
-        training_outcome = False
-        home_players = get_home_players(game)
+#     def training_done(self, game):
+#         training_outcome = False
+#         home_players = get_home_players(game)
         
-        for player in home_players:
-            if game.is_touchdown(player):
-                training_outcome = True
+#         for player in home_players:
+#             if game.is_touchdown(player):
+#                 training_outcome = True
 
-        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
-        return training_complete, training_outcome
+#         training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+#         return training_complete, training_outcome
     
-    def allowed_fail_rate(self): 
-        return 0      
+#     def allowed_fail_rate(self): 
+#         return 0      
 
 
 
-class Lecture13(Lecture): 
-    def __init__(self): 
+# class Lecture13(Lecture): 
+#     def __init__(self): 
         
-        self.action_started_mod = 2 
-        self.dst_mod = 6
-        self.noise_mod = 7
-        super().__init__("Lecture 13", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
+#         self.action_started_mod = 2 
+#         self.dst_mod = 6
+#         self.noise_mod = 7
+#         super().__init__("Lecture 13", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
-    def _reset_lecture(self, game): 
+#     def reset_game(self, config): 
+#         return get_empty_game_turn(config, turn=0)
 
-        # ### CONFIG ### # 
-        board_x_max = len(game.state.pitch.board[0]) -2  
-        board_y_max = len(game.state.pitch.board) -2
+#     def _reset_lecture(self, game): 
+
+#         # ### CONFIG ### # 
+#         board_x_max = len(game.state.pitch.board[0]) -2  
+#         board_y_max = len(game.state.pitch.board) -2
     
-        #Level configuration 
-        level = self.get_level()        
-        noise           = (level % self.noise_mod) 
-        action_started  = (level // self.noise_mod) % self.action_started_mod
-        distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
+#         #Level configuration 
+#         level = self.get_level()        
+#         noise           = (level % self.noise_mod) 
+#         action_started  = (level // self.noise_mod) % self.action_started_mod
+#         distance        = (level // self.noise_mod // self.action_started_mod) % self.dst_mod
         
-        home_players = get_home_players(game)
-        away_players = get_away_players(game)
+#         home_players = get_home_players(game)
+#         away_players = get_away_players(game)
 
-        #inserting coords for players according to lectures 
-        home_coords = [[6,12],[7,11],[8,13],[9,13],[12,10],[12,11]]
-        away_coords = [[8,9],[2,10],[3,10]]
+#         #inserting coords for players according to lectures 
+#         home_coords = [[6,12],[7,11],[8,13],[9,13],[12,10],[12,11]]
+#         away_coords = [[8,9],[2,10],[3,10]]
 
-        #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
+#         #give ball to certain player using:  give_ball=True przy move_player_within_square, best to do is to set him as 1st one and use this:
         
-        #setup opponents
-        for a in range(len(away_players)): 
-            p = away_players.pop() 
-            move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
+#         #setup opponents
+#         for a in range(len(away_players)): 
+#             p = away_players.pop() 
+#             move_player_within_square(game, p, x=away_coords[a,0], y=away_coords[a,1])
         
-        #setup own team
-        for a in range(len(home_players)): 
-            p = home_players.pop() 
-            move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1]) 
-        #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
+#         #setup own team
+#         for a in range(len(home_players)): 
+#             p = home_players.pop() 
+#             move_player_within_square(game, p, x=home_coords[a,0], y=home_coords[a,1]) 
+#         #REMEMBER TO CHANGE IF IT'S NOT OUR PLAYER HOLDING THE BALL
         
-        put(game,ball,[8,5])
+#         put(game,ball,[8,5])
                
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+#         if noise == 0: 
+#             move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+#         else:    
+#             game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
-        if p_carrier.position.x < 15: 
-            move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
+#         if p_carrier.position.x < 15: 
+#             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )
         
-        if action_started == 0: 
-            game.set_available_actions() 
-            action_type = ActionType.START_MOVE
-            a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
-            game.step(a)
+#         if action_started == 0: 
+#             game.set_available_actions() 
+#             action_type = ActionType.START_MOVE
+#             a = Action(action_type=action_type, position = p_carrier.position, player = p_carrier )
+#             game.step(a)
         
-        self.turn = deepcopy(game.state.home_team.state.turn)  
-        self.carrier = p_carrier
+#         self.turn = deepcopy(game.state.home_team.state.turn)  
+#         self.carrier = p_carrier
     
-    def training_done(self, game):
-        training_outcome = False
-        home_players = get_home_players(game)
+#     def training_done(self, game):
+#         training_outcome = False
+#         home_players = get_home_players(game)
         
-        for player in home_players:
-            if game.is_touchdown(player):
-                training_outcome = True
+#         for player in home_players:
+#             if game.is_touchdown(player):
+#                 training_outcome = True
 
-        training_complete = training_outcome or self.turn != game.state.home_team.state.turn
-        return training_complete, training_outcome
+#         training_complete = training_outcome or self.turn != game.state.home_team.state.turn
+#         return training_complete, training_outcome
     
-    def allowed_fail_rate(self): 
-        return 0      
+#     def allowed_fail_rate(self): 
+#         return 0      
 
 
 class Lecture14(Lecture): 
@@ -1599,6 +1744,15 @@ class Lecture14(Lecture):
         self.noise_mod = 7
         super().__init__("Lecture 14", self.dst_mod * self.noise_mod  -1, delta_level=0.1) 
         
+    def reset_game(self, config): 
+        return get_empty_game_turn(config, turn=0)
+
+    def evaluate(self, game, drive_over): 
+        if drive_over:
+            return LectureOutcome(self, win=(game.get_home_in_lead()==1), draw=game.get_home_in_lead()==0)
+        else: 
+            return None 
+            
     def _reset_lecture(self, game): 
 
         # ### CONFIG ### # 
@@ -1638,10 +1792,10 @@ class Lecture14(Lecture):
         put(game,ball,[20,10])
 
         
-        if noise == 0: 
-            move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
-        else:    
-            game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
+        # if noise == 0: 
+        #     move_player_within_square(game, p_carrier, center_square.x, center_square.y) 
+        # else:    
+        #     game.move(p_carrier, get_boundary_square(game, 1+distance, game.get_ball().position)) 
         
         if p_carrier.position.x < 15: 
             move_player_within_square(game, p_carrier, x=[15,18], y=[p_carrier.position.y-1, p_carrier.position.y+1] )

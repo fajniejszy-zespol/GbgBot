@@ -286,7 +286,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
 
     with torch.no_grad():
 
-        env.reset(lecture, skip_obs=True)
+        env.reset(lecture)
         memory = WorkerMemory(worker_max_steps, env)
 
         while worker_running:
@@ -306,7 +306,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
             steps += 1
 
             (action, action_idx, action_masks, value, spatial_obs, non_spatial_obs) = trainee.act(game=None, env=env)
-            (_, reward, done, info, lect_outcome) = env.step(action, skip_obs=True)
+            (_, reward, done, info, lect_outcome) = env.step(action)
             reward_shaped = reward_function(env, info, shaped=True)
 
             if trainee.cnn_used_for_latest_action():
@@ -329,7 +329,7 @@ def worker(results_queue, lecture_queue, msg_queue, env, worker_id, lecture, tra
                 except:
                     worker_running = False
                     break
-                env.reset(lecture=lecture, skip_obs=True)
+                env.reset(lecture=lecture,)
                 memory.reset()
 
                 steps = 0

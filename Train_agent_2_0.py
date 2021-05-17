@@ -1,3 +1,4 @@
+from multiprocessing.context import SpawnContext
 import gym
 from ffai import FFAIEnv
 from pytest import set_trace
@@ -24,11 +25,11 @@ max_grad_norm = 0.05
 
 # Environment
 env_name = "FFAI-5-v2"
-active_lectures = [ Lectures.Scoring(), Lectures.GameAgainstRandom(),Lectures.Lecture1(), Lectures.Lecture2(), Lectures.Lecture3(), Lectures.Lecture4(), Lectures.Lecture5(), Lectures.Lecture6(), Lectures.Lecture7(), Lectures.Lecture8(), Lectures.Lecture9(), Lectures.Lecture10(), Lectures.Lecture11(), Lectures.Lecture12(), Lectures.Lecture13(), Lectures.Lecture14()]
+active_lectures = [ Lectures.Scoring(), Lectures.GameAgainstRandom(),Lectures.Lecture1(), Lectures.Lecture3(), Lectures.Lecture4(), Lectures.Lecture5(), Lectures.Lecture6(), Lectures.Lecture7(), Lectures.Lecture8(), Lectures.Lecture10(), Lectures.Lecture14()]
 
 # Architecture
 num_hidden_nodes = 128
-num_cnn_kernels = [32, 64]
+num_cnn_kernels = [[32, 64]]
 
 model_name = env_name
 log_filename = "logs/" + model_name + ".dat"
@@ -60,7 +61,10 @@ def calc_network_shape(env):
              'num_spat_action_types': num_spatial_action_types, 
              'num_spat_actions': num_spatial_actions, 
              'num_non_spat_actions': num_non_spatial_action_types,
-             'action_space': action_space}
+             'action_space': action_space,
+             'spatial_action_types': len(spatial_action_types),
+             'non_spatial_actions': len(non_spatial_action_types)
+             }
     return shape 
     
 def main():
@@ -78,7 +82,7 @@ def main():
     shape = calc_network_shape(es[0])
 
     # MODEL
-    ac_agent = CNNPolicy( shape['spat_obs'], shape['non_spat_obs'], hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=shape['action_space'])
+    ac_agent = CNNPolicy( shape['spat_obs'], shape['non_spat_obs'], hidden_nodes=num_hidden_nodes, kernels=num_cnn_kernels, actions=shape['action_space'], spatial_action_types=shape["spatial_action_types"], non_spat_actions=shape["non_spatial_actions"])
 
     # OPTIMIZER
     optimizer = optim.RMSprop(ac_agent.parameters(), learning_rate)
