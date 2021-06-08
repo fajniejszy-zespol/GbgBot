@@ -8,6 +8,6 @@ models/*
 plots/*
 logs/*
 
-
+venv/
 
 logs/Gbg_log.txt
