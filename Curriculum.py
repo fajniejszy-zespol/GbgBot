@@ -66,8 +66,10 @@ class Lecture:
         Not sure how to use this. TODO TBD 
         """
         return 0
+
     def get_name(self):
         return self.name
+
 
 class LectureOutcome:
     def __init__(self, lecture, win, draw=None):
@@ -112,7 +114,7 @@ class LectureHistory:
             self.history_filled = True
             self.index = 0
 
-        #Increase difficulty?
+        # Increase difficulty?
         if self.lecture.get_level() == outcome.level:
             if outcome.result == 1:
                 self.lecture.increase_diff()
@@ -121,7 +123,6 @@ class LectureHistory:
 
         if outcome.result == 1 and self.max_acheived < outcome.level:
             self.max_acheived = outcome.level
-
 
     def report(self, with_name=False):
         lvl = str(self.lecture.get_level())
@@ -185,7 +186,7 @@ class Academy:
             name = l.lecture.name
             extra_spaces = max_name_len - len(name)
 
-            s += l.lecture.name +": "+ " " * extra_spaces
+            s += l.lecture.name + ": " + " " * extra_spaces
             s += l.report() + "\n"
 
         return s
