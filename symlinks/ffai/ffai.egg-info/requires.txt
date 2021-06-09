@@ -1,0 +1,12 @@
+numpy
+untangle
+Flask
+gym
+Jinja2
+python-interface
+stopit
+requests
+pytest
+torch
+torchvision
+matplotlib
