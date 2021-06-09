@@ -15,7 +15,7 @@ from ffai.ai.bots.random_bot import RandomBot
 
 from scipy.special import softmax
 
-HISTORY_SIZE = 100
+HISTORY_SIZE = 200
 
 
 class Lecture:

@@ -18,9 +18,9 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Training configuration
-max_updates = 200
+max_updates = 2000
 num_processes = 8
-learning_rate = 0.01
+learning_rate = 0.001
 gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
