@@ -18,9 +18,9 @@ import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Training configuration
-max_updates = 20
+max_updates = 200
 num_processes = 8
-learning_rate = 0.001
+learning_rate = 0.01
 gamma = 0.99
 entropy_coef = 0.01
 value_loss_coef = 0.5
@@ -28,8 +28,20 @@ prediction_loss_coeff = 0.0
 max_grad_norm = 0.05
 
 # Environment
-env_name = "FFAI-5-v2"
-active_lectures = [Lectures.Scoring(), Lectures.GameAgainstRandom()]
+env_name = "FFAI-11-v2"
+active_lectures = [
+    Lectures.Scoring(),
+    Lectures.GameAgainstRandom(),
+    Lectures.Lecture1(),
+    Lectures.Lecture3(),
+    Lectures.Lecture4(),
+    Lectures.Lecture5(),
+    Lectures.Lecture6(),
+    Lectures.Lecture7(),
+    Lectures.Lecture8(),
+    Lectures.Lecture10(),
+    Lectures.Lecture14()
+]
 
 # Architecture
 num_hidden_nodes = 128
@@ -116,8 +128,7 @@ def main():
         actions = Variable(torch.LongTensor(memory.actions.view(-1, 1)))
         actions_mask = Variable(memory.action_masks)
 
-        action_log_probs, values, dist_entropy, td_pred = ac_agent.evaluate_actions(spatial, non_spatial, actions,
-                                                                                    actions_mask)
+        action_log_probs, values, dist_entropy, td_pred = ac_agent.evaluate_actions(spatial, non_spatial, actions, actions_mask)
 
         # ### Compute loss and back propagate ### 
         # values = values.view(steps_per_update, num_processes, 1)

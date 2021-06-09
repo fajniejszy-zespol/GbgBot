@@ -15,7 +15,7 @@ from ffai.ai.bots.random_bot import RandomBot
 
 from scipy.special import softmax
 
-HISTORY_SIZE = 200
+HISTORY_SIZE = 100
 
 
 class Lecture:
@@ -66,8 +66,10 @@ class Lecture:
         Not sure how to use this. TODO TBD 
         """
         return 0
+
     def get_name(self):
         return self.name
+
 
 class LectureOutcome:
     def __init__(self, lecture, win, draw=None):
@@ -112,7 +114,7 @@ class LectureHistory:
             self.history_filled = True
             self.index = 0
 
-        #Increase difficulty?
+        # Increase difficulty?
         if self.lecture.get_level() == outcome.level:
             if outcome.result == 1:
                 self.lecture.increase_diff()
@@ -121,7 +123,6 @@ class LectureHistory:
 
         if outcome.result == 1 and self.max_acheived < outcome.level:
             self.max_acheived = outcome.level
-
 
     def report(self, with_name=False):
         lvl = str(self.lecture.get_level())
@@ -152,6 +153,7 @@ class Academy:
         return np.random.choice(self.lect_histo, 1, p=self.lec_prob)[0].lecture
 
     def add_lecture(self, lectures):
+
         if type(lectures) != list:
             lectures = [lectures]
 
@@ -185,7 +187,7 @@ class Academy:
             name = l.lecture.name
             extra_spaces = max_name_len - len(name)
 
-            s += l.lecture.name +": "+ " " * extra_spaces
+            s += l.lecture.name + ": " + " " * extra_spaces
             s += l.report() + "\n"
 
         return s
@@ -366,6 +368,7 @@ def move_player_within_square(game, player, x, y, give_ball=False, p_used=None, 
 
     while True:
         i += 1
+
         assert i < 5000
 
         x = randint(x_min, x_max)
