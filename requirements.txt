@@ -33,7 +33,7 @@ six==1.13.0
 stopit==1.1.2
 torch==1.8.1
 typing-extensions==3.10.0.0
-untangle==1.1.1
+untangle==1.2.1
 urllib3==1.25.6
 wcwidth==0.1.7
 Werkzeug==0.16.0
